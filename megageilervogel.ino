@@ -1,3 +1,5 @@
+#include <FastLED.h>
+
 int led = 13;
 
 // the setup routine runs once when you press reset:

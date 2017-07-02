@@ -4,11 +4,6 @@ ARDUINO_HOME=/Applications/Arduino.app/Contents/Java
 BOARD=teensy:avr:teensy36
 MODEL=TEENSY36
 
-# 
-
-# needs greadlink on OSX
-# work 
-
 PROJECT_NAME=$(shell basename $(CURDIR)).ino
 BUILD_PATH_BASE=build/
 BUILDER_HW=-fqbn=$(BOARD) -hardware "$(ARDUINO_HOME)/hardware" 
@@ -17,7 +12,6 @@ BUILDER_LIBS=-built-in-libraries "$(ARDUINO_HOME)/libraries"
 BUILDER_EXTRA+= -prefs=build.warn_data_percentage=75 
 BUILDER_OPTS=$(BUILDER_EXTRA) -ide-version=$(ARDUINO_VERSION) $(BUILDER_HW) $(BUILDER_TOOLS) $(BUILDER_LIBS)
 BUILD_PATH ?=$(CURDIR)/$(BUILD_PATH_BASE)
-
 
 all: dirs build
 
