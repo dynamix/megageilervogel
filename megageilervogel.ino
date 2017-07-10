@@ -1,5 +1,13 @@
 #include <FastLED.h>
 
+// PINS
+// 1x Potentiometer
+// 1x Mic
+// 1x Button
+// 2x Accel - SDA/SCL - 38/37 or 3/2 or 18/19
+// 4x per Wing, 3x Body, 1x rest
+// OLED eyes SI->MOSI (0,11), CL->SCLK (32,13) +3 pins
+
 int led = 13;
 
 // the setup routine runs once when you press reset:
