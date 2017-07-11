@@ -30,3 +30,11 @@ deploy:
 	scp $(BUILD_PATH)$(PROJECT_NAME).hex pi@raspberrypi.local:/home/pi/code.hex
 	ssh -t pi@raspberrypi.local "sleep 3 && python reset.py" &
 	ssh -t pi@raspberrypi.local "./teensy_loader_cli/teensy_loader_cli --mcu=$(MODEL) -w -v code.hex"
+
+deployx:
+	scp $(BUILD_PATH)$(PROJECT_NAME).hex pi@raspberrypi.local:/home/pi/code.hex
+	ssh -t pi@raspberrypi.local "./teensy_loader_cli/teensy_loader_cli --mcu=$(MODEL) -w -v code.hex"
+
+
+reset:
+	ssh -t pi@raspberrypi.local "python reset.py" 
