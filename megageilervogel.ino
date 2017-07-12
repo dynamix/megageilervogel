@@ -1,9 +1,17 @@
+#include <SoftwareSerial.h>
+#include <Adafruit_Pixie.h>
+
 #include <FastLED.h>
 
-#define NUM_LEDS 1800
+#define PIXIEPIN 5 // Pin number for SoftwareSerial output
+
+SoftwareSerial pixieSerial(-1, PIXIEPIN);
+Adafruit_Pixie strip = Adafruit_Pixie(1, &pixieSerial);
+
+#define NUM_LEDS 300
 #define NUM_LEDS_PER_STRIP 300
-#define NUM_STRIPS 6
-#define MAX_BRIGHTNESS 64
+#define NUM_STRIPS 1
+#define MAX_BRIGHTNESS 255
 
 // PINS
 // 1x Potentiometer
@@ -23,12 +31,20 @@ void setup()
   // initialize the digital pin as an output.
   pinMode(led, OUTPUT);
 
+  pixieSerial.begin(115200);
+  strip.setBrightness(100);
+  strip.setPixelColor(0, 0, 0, 255);
+  strip.show();
+
+  delay(2000);
+
   FastLED.addLeds<WS2811_PORTD, NUM_STRIPS>(leds, NUM_LEDS_PER_STRIP);
   // // FastLED.addLeds<WS2811_PORTDC, 8>(leds, NUM_LEDS_PER_STRIP);
   // //.setCorrection(TypicalLEDStrip);
   FastLED.setBrightness(MAX_BRIGHTNESS);
   FastLED.clear();
   FastLED.show();
+  // FastLED.setMaxPowerInVoltsAndMilliamps(5, 2000);
 
   Serial.begin(115200);
   delay(1000); // if we fucked it up - great idea by fastled :D
@@ -65,19 +81,28 @@ void testled()
 void runner()
 {
   static int pos = 0;
-  if (pos >= NUM_LEDS_PER_STRIP)
-  {
-    pos = 0;
-  }
+  // if (pos >= NUM_LEDS_PER_STRIP)
+  // {
+  //   pos = 0;
+  // }
   clear();
+  // leds[0] = CRGB(0, 255, 0);
+  // leds[1] = CRGB(255, 0, 0);
+  // leds[2] = CRGB(0, 0, 255);
+
   for (int i = 0; i < NUM_STRIPS; i++)
   {
-    leds[(i * NUM_LEDS_PER_STRIP) + pos] = CRGB(255, 0, 0);
-    leds[(i * NUM_LEDS_PER_STRIP) + ((pos + 1) % NUM_LEDS_PER_STRIP)] = CRGB(255, 0, 0);
-    leds[(i * NUM_LEDS_PER_STRIP) + ((pos + 2) % NUM_LEDS_PER_STRIP)] = CRGB(255, 0, 0);
-    leds[(i * NUM_LEDS_PER_STRIP) + ((pos + 3) % NUM_LEDS_PER_STRIP)] = CRGB(255, 0, 0);
+    for (int j = 0; j < 300; j++)
+    {
+      leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(255, 255, 255);
+      // leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(0, 255, 0) ;
+    }
+    // leds[(i * NUM_LEDS_PER_STRIP) + pos] = CRGB(255, 0, 0);
+    // leds[(i * NUM_LEDS_PER_STRIP) + ((pos + 1) % NUM_LEDS_PER_STRIP)] = CRGB(0, 255, 0);
+    // leds[(i * NUM_LEDS_PER_STRIP) + ((pos + 2) % NUM_LEDS_PER_STRIP)] = CRGB(0, 0, 255);
+    // leds[(i * NUM_LEDS_PER_STRIP) + ((pos + 3) % NUM_LEDS_PER_STRIP)] = CRGB(0, 255, 0);
   }
-  pos++;
+  // pos++;
 }
 
 uint16_t fps = 0;
@@ -92,11 +117,15 @@ void showFps()
 void loop()
 {
 
+  strip.setPixelColor(0, 0, 0, 255);
+  strip.show();
+
   // Turn the LED on, then pause
   // leds[0] = CRGB(20, 20, 255);
   fps++;
   runner();
   FastLED.show();
+
   EVERY_N_MILLISECONDS(1000) { showFps(); }
 
   // delay(20);
