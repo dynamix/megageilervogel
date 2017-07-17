@@ -32,7 +32,7 @@ void setup()
   pinMode(led, OUTPUT);
 
   pixieSerial.begin(115200);
-  strip.setBrightness(100);
+  strip.setBrightness(80);
   strip.setPixelColor(0, 0, 0, 255);
   strip.show();
 
@@ -94,7 +94,21 @@ void runner()
   {
     for (int j = 0; j < 300; j++)
     {
-      leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(255, 255, 255);
+      char r, g, b;
+      if (j % 3 == 0)
+      {
+        r = 255;
+      }
+      else if (j % 3 == 1)
+      {
+        g = 255;
+      }
+      else if (j % 3 == 2)
+      {
+        b = 255;
+      }
+
+      leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(r, g, b);
       // leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(0, 255, 0) ;
     }
     // leds[(i * NUM_LEDS_PER_STRIP) + pos] = CRGB(255, 0, 0);
