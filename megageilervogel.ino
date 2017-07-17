@@ -3,15 +3,15 @@
 
 #include <FastLED.h>
 
-#define PIXIEPIN 5 // Pin number for SoftwareSerial output
+#define PIXIEPIN 33 // Pin number for SoftwareSerial output
 
 SoftwareSerial pixieSerial(-1, PIXIEPIN);
 Adafruit_Pixie strip = Adafruit_Pixie(1, &pixieSerial);
 
-#define NUM_LEDS 300
+#define NUM_LEDS 2400
 #define NUM_LEDS_PER_STRIP 300
-#define NUM_STRIPS 1
-#define MAX_BRIGHTNESS 255
+#define NUM_STRIPS 8
+#define MAX_BRIGHTNESS 128
 
 // PINS
 // 1x Potentiometer
@@ -81,6 +81,15 @@ void testled()
 void runner()
 {
   static int pos = 0;
+  static uint8_t hue = 0;
+
+  //   -  strip.setPixelColor(0, 0, 0, 255);
+  // +  static uint8_t hue = 0;
+  // +  hue++;
+  // +  CRGB rgb = CRGB(0, 0, 0);
+  // +  rgb.setHSV(hue, 192, 255);
+  // +
+  // +  strip.setPixelColor(0, rgb.r, rgb.g, rgb.b);
   // if (pos >= NUM_LEDS_PER_STRIP)
   // {
   //   pos = 0;
@@ -90,25 +99,27 @@ void runner()
   // leds[1] = CRGB(255, 0, 0);
   // leds[2] = CRGB(0, 0, 255);
 
+  hue++;
   for (int i = 0; i < NUM_STRIPS; i++)
   {
     for (int j = 0; j < 300; j++)
     {
-      char r, g, b;
-      if (j % 3 == 0)
-      {
-        r = 255;
-      }
-      else if (j % 3 == 1)
-      {
-        g = 255;
-      }
-      else if (j % 3 == 2)
-      {
-        b = 255;
-      }
+      // char r, g, b;
+      // if (j % 3 == 0)
+      // {
+      //   r = 255;
+      // }
+      // else if (j % 3 == 1)
+      // {
+      //   g = 255;
+      // }
+      // else if (j % 3 == 2)
+      // {
+      //   b = 255;
+      // }
 
-      leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(r, g, b);
+      leds[(i * NUM_LEDS_PER_STRIP) + j] = CHSV(hue + j, 255, 255);
+      // leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(r, g, b);
       // leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(0, 255, 0) ;
     }
     // leds[(i * NUM_LEDS_PER_STRIP) + pos] = CRGB(255, 0, 0);
@@ -139,6 +150,7 @@ void loop()
   fps++;
   runner();
   FastLED.show();
+  delay(10);
 
   EVERY_N_MILLISECONDS(1000) { showFps(); }
 
