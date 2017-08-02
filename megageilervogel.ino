@@ -3,6 +3,12 @@
 #include <Adafruit_Pixie.h>
 #include "Adafruit_Trellis.h"
 
+// sensor
+#include <Adafruit_Sensor.h>
+#include <Adafruit_LSM9DS0.h>
+
+#include <i2c_t3.h>
+
 // #include <Audio.h>
 
 // #include <SPI.h>
@@ -11,6 +17,9 @@
 
 #define POTENTIOMETER_PIN 16
 #define MIC_PIN 17
+
+// motion sensor
+Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0(&Wire2, 1000);
 
 // eyes
 Adafruit_Trellis matrix0 = Adafruit_Trellis();
@@ -56,7 +65,7 @@ void testMode() {}
 
 Mode modes[] = {
     // {juggle, juggleSetup},
-    {flash2, flash2Setup},
+    // {flash2, flash2Setup},
     {bpm, bpmSetup},
     {randomBluePixels, randomBluePixelsSetup},
     {fireWithPotentiometer, fireWithPotentiometerSetup},
@@ -86,6 +95,8 @@ Mode modes[] = {
 // the setup routine runs once when you press reset:
 void setup()
 {
+  Serial.begin(115200);
+
   pad.begin(0x70);
   for (uint8_t i = 0; i < 16; i++)
   {
@@ -99,6 +110,18 @@ void setup()
     pad.clrLED(i);
     pad.writeDisplay();
     delay(50);
+  }
+
+  if (lsm.begin())
+  {
+    Serial.println("LSM SENSOR GOOD!");
+    lsm.setupAccel(lsm.LSM9DS0_ACCELRANGE_2G);
+    lsm.setupMag(lsm.LSM9DS0_MAGGAIN_2GAUSS);
+    lsm.setupGyro(lsm.LSM9DS0_GYROSCALE_245DPS);
+  }
+  else
+  {
+    Serial.println("LSM SENSOR ERROR!");
   }
 
   // AudioMemory(4);
@@ -116,7 +139,6 @@ void setup()
   FastLED.show();
   // FastLED.setMaxPowerInVoltsAndMilliamps(5, 2000);
 
-  Serial.begin(115200);
   delay(10); // if we fucked it up - great idea by fastled :D
 
   modes[0][1]();
@@ -161,7 +183,7 @@ void checkSerial()
   {
     Serial.read();
     //nextMode(1);
-    Serial.println(currentMode);
+    // Serial.println(currentMode);
     // globalP++;
     // Serial.println(globalP);
   }
@@ -220,8 +242,8 @@ void checkButtons()
 
       if (pad.justPressed(i))
       {
-        Serial.print("BUTTON ");
-        Serial.println(i);
+        // Serial.print("BUTTON ");
+        // Serial.println(i);
         pad.setLED(i);
         // if (i == 8)
         // {
@@ -768,6 +790,17 @@ void bpmSetup()
 
 void bpm()
 {
+  sensors_event_t accel, mag, gyro, temp;
+  lsm.getEvent(&accel, &mag, &gyro, &temp);
+  // float mv = accel.acceleration.x + accel.acceleration.y + accel.acceleration.z + 9.81;
+  float mv = accel.acceleration.x + (9.81 + 0.9);
+  Serial.println(mv);
+
+  if (mv > 10)
+  {
+    strobo();
+  }
+
   static uint8_t gHue = 0;
   uint8_t BeatsPerMinute = 100;
   CRGBPalette16 palette = PartyColors_p;
@@ -830,7 +863,7 @@ void strobo()
   {
     delay(50);
     eyes.setBrightness(255);
-    eyes.setPixelColor(0, 255, 20, 20);
+    eyes.setPixelColor(0, 255, 255, 255);
     // eyes.setPixelColor(0, 126, 6, 229);
     // eyes.setPixelColor(0, stroboC[i].r, stroboC[i].g, stroboC[i].b);
     eyes.show();
@@ -1126,6 +1159,40 @@ void flash2()
   delay(random8(frequency) * 100);
 }
 
+void reportSensor()
+{
+  sensors_event_t accel, mag, gyro, temp;
+  lsm.getEvent(&accel, &mag, &gyro, &temp);
+  // print out accelleration data
+  Serial.print("Accel X: ");
+  Serial.print(accel.acceleration.x);
+  Serial.print(" ");
+  Serial.print("  \tY: ");
+  Serial.print(accel.acceleration.y);
+  Serial.print(" ");
+  Serial.print("  \tZ: ");
+  Serial.print(accel.acceleration.z);
+  Serial.println("  \tm/s^2");
+
+  // print out gyroscopic data
+  Serial.print("Gyro  X: ");
+  Serial.print(gyro.gyro.x);
+  Serial.print(" ");
+  Serial.print("  \tY: ");
+  Serial.print(gyro.gyro.y);
+  Serial.print(" ");
+  Serial.print("  \tZ: ");
+  Serial.print(gyro.gyro.z);
+  Serial.println("  \tdps");
+
+  // print out temperature data
+  Serial.print("Temp: ");
+  Serial.print(temp.temperature);
+  Serial.println(" *C");
+
+  Serial.println("**********************\n");
+}
+
 // the loop routine runs over and over again forever:
 void loop()
 {
@@ -1160,6 +1227,7 @@ void loop()
   EVERY_N_MILLISECONDS(30) { checkButtons(); }
   EVERY_N_MILLISECONDS(500) { testled(); }
   EVERY_N_MILLISECONDS(500) { checkSerial(); }
+  // EVERY_N_MILLISECONDS(250) { reportSensor(); }
   // EVERY_N_MILLISECONDS(100) { simpleAudio(); }
   // colorWheel();
   // runner();
