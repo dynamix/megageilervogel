@@ -17,11 +17,11 @@ Adafruit_Trellis matrix0 = Adafruit_Trellis();
 Adafruit_TrellisSet pad = Adafruit_TrellisSet(&matrix0);
 
 SoftwareSerial pixieSerial(-1, 5);
-Adafruit_Pixie eyes = Adafruit_Pixie(1, &pixieSerial);
 SoftwareSerial pixieSerial2(-1, 20);
-Adafruit_Pixie fiberHead = Adafruit_Pixie(1, &pixieSerial2);
 SoftwareSerial pixieSerial3(-1, 21);
-Adafruit_Pixie fiberTail = Adafruit_Pixie(1, &pixieSerial3);
+Adafruit_Pixie eyes = Adafruit_Pixie(1, &pixieSerial);
+Adafruit_Pixie fiberHead = Adafruit_Pixie(1, &pixieSerial3);
+Adafruit_Pixie fiberTail = Adafruit_Pixie(1, &pixieSerial2);
 
 #define NUM_LEDS 600
 #define NUM_LEDS_PER_STRIP 120
@@ -55,66 +55,26 @@ void none() {}
 void testMode() {}
 
 Mode modes[] = {
+    // {juggle, juggleSetup},
+    {flash2, flash2Setup},
+    {bpm, bpmSetup},
+    {randomBluePixels, randomBluePixelsSetup},
+    {fireWithPotentiometer, fireWithPotentiometerSetup},
+    {fire, fireSetup},
+    {fiberPulse, fiberPulseSetup},
+    {fiberBlink, fiberBlinkSetup},
+
+    // {ftest, none},
+    {none, none},
+    {sinelon, sinelonSetup},
+    {fiberMode, fiberModeSetup},
+    {rainbowSparks, rainbowSparksSetup},
+    {sparks, sparksSetup},
+    {simpleAudio, simpleAudioSetup},
     {runner, none},
     {colorWheelPulsing, colorWheelPulsingSetup},
     {iceSparks, iceSparksSetup},
 };
-
-// // all the main modes we support
-// Modes modes =         {
-//   testMode,
-//   // stars,
-//   //spiral,
-//   ambientAllRainbow,
-//   ambientRedCycle,
-//   gyro,
-//   fire,
-//   fireSensor,
-//   simpleSensor, // move down later
-//   ringAudio,
-//   simpleAudio,
-//   twoRingAudio,
-//   colorWheel,
-//   fastColorWheel,
-//   colorWheelPulsing,
-//   colorWheelUpDown,
-//   segmentTurning,
-//   randomBluePixelsOnSphere,
-//   rainbowSparks,
-//   randomSparks,
-//   sparks,
-//   sparksAndRainbow,
-//   threeSnakes,
-//   lightning
-
-// };
-
-// Modes setupForModes = {
-//   none,
-//   // starsSetup,
-//   //spiralSetup,
-//   ambientAllRainbowSetup,
-//   ambientRedCycleSetup,
-//   gyroSetup,
-//   fireSetup,
-//   fireSensorSetup,
-//   simpleSensorSetup,
-//   ringAudioSetup,
-//   none,
-//   twoRingAudioSetup,
-//   none,
-//   none,
-//   none,
-//   colorWheelUpDownSetup,
-//   segmentTurningSetup,
-//   none,
-//   rainbowSparksSetup,
-//   randomSparksSetup,
-//   sparksSetup,
-//   sparksAndRainbowSetup,
-//   threeSnakesSetup,
-//   lightningSetup
-// };
 
 // AudioInputAnalog adc1(17); //xy=164,95
 // AudioAnalyzePeak peak1;    //xy=317,123
@@ -157,7 +117,7 @@ void setup()
   // FastLED.setMaxPowerInVoltsAndMilliamps(5, 2000);
 
   Serial.begin(115200);
-  delay(1000); // if we fucked it up - great idea by fastled :D
+  delay(10); // if we fucked it up - great idea by fastled :D
 
   modes[0][1]();
 }
@@ -182,6 +142,7 @@ void nextMode(int8_t dir)
 
 void setMode(uint8_t mode)
 {
+
   previousMode = currentMode;
   currentMode = mode;
   if (currentMode < 0)
@@ -190,6 +151,7 @@ void setMode(uint8_t mode)
   usePotentiometer = 1;
   currentDelay = 0;
   shouldClear = 1;
+  usePixies = 0;
   modes[currentMode][1]();
 }
 
@@ -205,24 +167,54 @@ void checkSerial()
   }
 }
 
+static uint16_t potentiometer = 0;
+
 void checkPotentiometer()
 {
-  static uint16_t potentiometer = 0;
   potentiometer = analogRead(POTENTIOMETER_PIN);
   uint8_t brightness = potentiometer / 4;
+  currentBrightness = brightness;
   if (usePotentiometer == 1)
   {
     LEDS.setBrightness(brightness);
-    // eyes.setBrightness(brightness);
     // fiberHead.setBrightness(brightness);
     // fiberTail.setBrightness(brightness);
   }
+}
+
+void fiberModeSetup()
+{
+  currentDelay = 25;
+}
+
+void fiberMode()
+{
+  static int8_t hue = 0;
+  hue++;
+  CRGB c;
+  c.setHSV(hue, 240, 255);
+  fiberHead.setPixelColor(0, c.r, c.g, c.b);
+  fiberTail.setPixelColor(0, c.r, c.g, c.b);
+  fiberHead.setBrightness(currentBrightness);
+  fiberTail.setBrightness(currentBrightness);
+  // fibertest();
+  fiberHead.show();
+  fiberTail.show();
+  leds[fiberleft(0)] = CHSV(hue * 2, 240, 255);
+  leds[fiberleft(1)] = CHSV(hue, 240, 255);
+  leds[fiberleft(2)] = CHSV(hue * 3, 200, 255);
+  leds[fiberleft(3)] = CHSV(hue, 140, 255);
+  leds[fiberright(0)] = CHSV(hue * 2, 240, 255);
+  leds[fiberright(1)] = CHSV(hue, 240, 255);
+  leds[fiberright(2)] = CHSV(hue * 3, 200, 255);
+  leds[fiberright(3)] = CHSV(hue, 140, 255);
 }
 
 void checkButtons()
 {
   if (pad.readSwitches())
   {
+    // buttons with a direct mode mapping
     for (uint8_t i = 0; i < 12; i++)
     {
 
@@ -231,13 +223,26 @@ void checkButtons()
         Serial.print("BUTTON ");
         Serial.println(i);
         pad.setLED(i);
-        if (i == 3)
+        // if (i == 8)
+        // {
+        //   nextMode(1);
+        // }
+        // else if (i == 9)
+        // {
+        //   nextMode(-1);
+        // }
+        // else
+        if (i == 10)
         {
-          nextMode(1);
+          flash();
         }
-        if (i == 7)
+        else if (i == 11)
         {
-          nextMode(-1);
+          strobo();
+        }
+        else if (i < 9)
+        {
+          setMode(i);
         }
       }
 
@@ -315,7 +320,12 @@ void audioUpdate()
   maxLvlAvg = (maxLvlAvg * 63 + maxLvl) >> 6; // (fake rolling average)
 }
 
-#define TOP 30
+#define TOP 60
+
+void simpleAudioSetup()
+{
+  currentDelay = 10;
+}
 
 void simpleAudio()
 {
@@ -326,26 +336,26 @@ void simpleAudio()
   hue++;
   height = TOP * (lvl - minLvlAvg) / (long)(maxLvlAvg - minLvlAvg);
 
-  Serial.print("Audio: ");
-  Serial.print(lvl);
-  Serial.print(" ");
-  Serial.print(minLvlAvg);
-  Serial.print(" ");
-  Serial.println(maxLvlAvg);
+  // Serial.print("Audio: ");
+  // Serial.print(lvl);
+  // Serial.print(" ");
+  // Serial.print(minLvlAvg);
+  // Serial.print(" ");
+  // Serial.println(maxLvlAvg);
 
   if (height < 0L)
     height = 0; // Clip output
   else if (height > TOP)
     height = TOP;
 
-  // for (int i = 0; i < NUM_STRIPS; i++)
-  // {
-  //   for (int j = 0; j < height; j++)
-  //   {
-  //     // leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(0, 255, 0);
-  //     leds[(i * NUM_LEDS_PER_STRIP) + j] = CHSV(hue + j, 255, 255);
-  //   }
-  // }
+  for (int i = 0; i < NUM_STRIPS; i++)
+  {
+    for (int j = 0; j < height; j++)
+    {
+      // leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(0, 255, 0);
+      leds[(i * NUM_LEDS_PER_STRIP) + j] = CHSV(hue + j, 255, 255);
+    }
+  }
 }
 
 void colorWheel()
@@ -377,18 +387,21 @@ void testled()
     lvl = HIGH;
 }
 
-void randomBluePixelsOnSphere()
+void randomBluePixelsSetup()
+{
+  currentDelay = 2;
+}
+
+void randomBluePixels()
 {
   clear();
-  for (int i = 0; i < NUM_STRIPS; i++)
+  for (int j = 0; j < 10; j++)
   {
-    for (int j = 0; j < 20; j++)
-    {
-      int x = random(0, 250);
-      leds[x + (i * NUM_LEDS_PER_STRIP)] = CRGB::Blue;
-    }
+    int x = random(0, NUM_LEDS);
+    leds[x] = CRGB::Blue;
   }
 }
+
 uint16_t stripoffset(uint8_t n)
 {
   return NUM_LEDS_PER_STRIP * n;
@@ -405,19 +418,19 @@ void ftest()
     for (int j = 0; j < NUM_LEDS_PER_STRIP; j++)
     // for (int j = 0; j < globalP; j++)
     {
-      if (j % 4 == 0)
+      if (i % 4 == 0)
       {
         c = CRGB::Green;
       }
-      if (j % 4 == 1)
+      if (i % 4 == 1)
       {
         c = CRGB::Blue;
       }
-      if (j % 4 == 2)
+      if (i % 4 == 2)
       {
         c = CRGB::Red;
       }
-      if (j % 4 == 3)
+      if (i % 4 == 3)
       {
         c = CRGB::Yellow;
       }
@@ -445,28 +458,42 @@ uint16_t xy(uint8_t x, uint8_t y)
     return (x % 12) * 30 + (29 - (y % 30));
 }
 
-uint16_t fiberleft(uint8_t n)
+uint16_t fiberleft(int8_t n)
 {
   return NUM_LEDS_PER_STRIP * 2 + 100 + n;
 }
 
 uint16_t fiberright(uint8_t n)
 {
-  return NUM_LEDS_PER_STRIP + 95 + n;
+  return 95 + n;
 }
 
 void fibertest()
 {
 
-  leds[fiberleft(0)] = CRGB::Green;
-  leds[fiberleft(1)] = CRGB::Blue;
-  leds[fiberleft(2)] = CRGB::Red;
-  leds[fiberleft(3)] = CRGB::Yellow;
-
+  // leds[fiberright(-5)] = CRGB::Green;
+  // leds[fiberright(-3)] = CRGB::Green;
+  // leds[fiberright(-3)] = CRGB::Green;
+  // leds[fiberright(-2)] = CRGB::Green;
+  // leds[fiberright(-1)] = CRGB::Green;
   leds[fiberright(0)] = CRGB::Green;
   leds[fiberright(1)] = CRGB::Blue;
   leds[fiberright(2)] = CRGB::Red;
   leds[fiberright(3)] = CRGB::Yellow;
+  leds[fiberright(4)] = CRGB::Yellow;
+  leds[fiberright(5)] = CRGB::Yellow;
+  leds[fiberright(6)] = CRGB::Yellow;
+  leds[fiberright(7)] = CRGB::Yellow;
+
+  // leds[fiberleft(0)] = CRGB::Green;
+  // leds[fiberleft(1)] = CRGB::Blue;
+  // leds[fiberleft(2)] = CRGB::Red;
+  // leds[fiberleft(3)] = CRGB::Yellow;
+
+  // leds[fiberright(0)] = CRGB::Green;
+  // leds[fiberright(1)] = CRGB::Blue;
+  // leds[fiberright(2)] = CRGB::Red;
+  // leds[fiberright(3)] = CRGB::Yellow;
 }
 
 void runner()
@@ -515,7 +542,10 @@ void showFps()
   fps = 0;
 }
 
-void colorWheelPulsingSetup() {}
+void colorWheelPulsingSetup()
+{
+  currentDelay = 30;
+}
 void colorWheelPulsing()
 {
   static uint8_t hue = 0;
@@ -569,35 +599,531 @@ void basicPowerLedMode()
   // static uint8_t hue = 0;
   static uint8_t eyeFlicker = 0;
 
+  int16_t b = 0;
+  CRGB c(255, 0, 0);
+
+  static int8_t d = 1;
+  static int16_t v = 10;
+
+  v += d;
+  if (v > 50)
+    d = -1;
+  if (v < -50)
+    d = 1;
+
   // EVERY_N_MILLISECONDS(20) { hue++; }
   // c.setHSV(hue, 255, 255);
   if (buttonState[EYE_STATE] == 1)
   {
-    eyes.setBrightness(80);
+    b = currentBrightness + v;
+    if (b < 0)
+    {
+      b = 0;
+    }
+    if (b > 255)
+      b = 255;
+    eyes.setBrightness(b);
   }
   else
   {
     eyes.setBrightness(0);
   }
 
-  CRGB c(255, 0, 0);
-  // static int8_t d = 1;
-  // static int8_t v = 10;
-  // EVERY_N_MILLISECONDS(50)
-  // {
-  //   v += d;
-  //   if (v > 20)
-  //     d = -1;
-  //   if (v < 1)
-  //     d = 1;
-  // }
-  // c.setHSV(30 + v, 70, 250);
   eyes.setPixelColor(0, c.r, c.g, c.b);
   eyes.show();
-  // fiberHead.setPixelColor(0, c.r, c.g, c.b);
-  // fiberTail.setPixelColor(0, c.r, c.g, c.b);
-  // fiberHead.show();
-  // fiberTail.show();
+}
+
+void sparksSetup()
+{
+  FastLED.setBrightness(255);
+  currentDelay = 10;
+  usePotentiometer = 0;
+}
+
+void sparks()
+{
+  for (int j = 0; j < 30; j++)
+  {
+    leds[random(0, NUM_LEDS)] = CRGB::White;
+  }
+}
+
+void fiberBlinkSetup()
+{
+  FastLED.setBrightness(255);
+  currentDelay = 5;
+  usePotentiometer = 0;
+  shouldClear = true;
+  fiberHead.setBrightness(0);
+  fiberTail.setBrightness(0);
+}
+void fiberBlink()
+{
+  int fiber = random(0, 4 + 4 + 2);
+  fiberHead.setBrightness(0);
+  fiberTail.setBrightness(0);
+  if (fiber < 4)
+  {
+    leds[fiberleft(fiber)] = CRGB(255, 255, 255);
+    // leds[fiberleft(fiber)] = CRGB(0, 0, 255);
+  }
+  else if (fiber >= 4 && fiber < 8)
+  {
+    // leds[fiberright(fiber - 4)] = CRGB(255, 0, 0);
+    leds[fiberright(fiber - 4)] = CRGB(255, 255, 255);
+  }
+  else if (fiber == 8)
+  {
+    fiberTail.setPixelColor(0, 255, 255, 255);
+    fiberTail.setBrightness(200);
+  }
+  else if (fiber == 9)
+  {
+    fiberHead.setPixelColor(0, 255, 255, 255);
+    fiberHead.setBrightness(100);
+  }
+
+  fiberHead.show();
+  fiberTail.show();
+}
+
+void fiberPulseSetup()
+{
+  FastLED.setBrightness(255);
+  currentDelay = 10;
+  usePotentiometer = 0;
+  shouldClear = true;
+  fiberHead.setBrightness(0);
+  fiberTail.setBrightness(0);
+}
+void fiberPulse()
+{
+  static uint8_t hue = 0;
+  static uint8_t pulse = 255;
+  static int8_t dir = -1;
+  static int dirs[10] = {-1, 1, -1, 1, -1, 1, -1, 1, -1, 1};
+  static byte pulses[10] = {random8(), random8(), random8(), random8(), random8(), random8(), random8(), random8(), random8(), random8()};
+
+  hue++;
+  for (int i = 0; i < 10; i++)
+  {
+    pulses[i] += dirs[i];
+
+    if (pulses[i] < 10)
+    {
+      dirs[i] = 1;
+    }
+    if (pulses[i] > 253)
+    {
+      dirs[i] = -1;
+    }
+
+    CRGB c = CHSV(16 * i + hue, 240, pulses[i]);
+
+    if (i < 4)
+    {
+      leds[fiberleft(i)] = c;
+      // leds[fiberleft(fiber)] = CRGB(0, 0, 255);
+    }
+    else if (i >= 4 && i < 8)
+    {
+      // leds[fiberright(fiber - 4)] = CRGB(255, 0, 0);
+      leds[fiberright(i - 4)] = c;
+    }
+    else if (i == 8)
+    {
+      fiberTail.setPixelColor(0, c.r, c.g, c.b);
+      fiberTail.setBrightness(255);
+    }
+    else if (i == 9)
+    {
+      fiberHead.setPixelColor(0, c.r, c.g, c.b);
+      fiberHead.setBrightness(255);
+    }
+  }
+  fiberHead.show();
+  fiberTail.show();
+}
+
+void rainbowSparksSetup()
+{
+  FastLED.setBrightness(255);
+  currentDelay = 15;
+  usePotentiometer = 0;
+}
+void rainbowSparks()
+{
+  static uint8_t hue = 0;
+  hue++;
+  for (int j = 0; j < 40; j++)
+  {
+    leds[random(0, NUM_LEDS)] = CHSV(hue, 210, 255);
+  }
+}
+
+void bpmSetup()
+{
+  currentDelay = 10;
+}
+
+void bpm()
+{
+  static uint8_t gHue = 0;
+  uint8_t BeatsPerMinute = 100;
+  CRGBPalette16 palette = PartyColors_p;
+  uint8_t beat = beatsin8(BeatsPerMinute, 32, 255);
+  for (int i = 0; i < NUM_LEDS; i++)
+  {
+    leds[i] = ColorFromPalette(palette, gHue + (i * 4), beat - gHue + (i * 10));
+  }
+  EVERY_N_MILLISECONDS(20) { gHue++; }
+}
+
+void juggleSetup()
+{
+  currentDelay = 50;
+}
+
+void juggle()
+{
+  static uint8_t gHue = 0;
+  fadeToBlackBy(leds, NUM_LEDS, 20);
+  byte dothue = 0;
+  for (int i = 0; i < 8; i++)
+  {
+    leds[beatsin16(i + 7, 0, NUM_LEDS)] |= CHSV(dothue, 200, 255);
+    dothue += 32;
+  }
+}
+
+void sinelon()
+{
+  static uint8_t gHue = 0;
+  fadeToBlackBy(leds, NUM_LEDS, 20);
+  int pos = beatsin16(13, 0, NUM_LEDS);
+  leds[pos] += CHSV(gHue, 255, 192);
+  EVERY_N_MILLISECONDS(20) { gHue++; }
+}
+
+void sinelonSetup()
+{
+  shouldClear = false;
+  FastLED.setBrightness(128);
+}
+
+void flash()
+{
+  eyes.setBrightness(255);
+  eyes.setPixelColor(0, 255, 255, 255);
+  eyes.show();
+  delay(100);
+  eyes.setBrightness(0);
+  eyes.show();
+}
+
+CRGB stroboC[5] = {CRGB(0, 0, 255), CRGB(255, 0, 0), CRGB(0, 255, 255), CRGB(255, 0, 255), CRGB(255, 255, 255)};
+
+void strobo()
+{
+
+  for (int i = 0; i < 5; i++)
+  {
+    delay(50);
+    eyes.setBrightness(255);
+    eyes.setPixelColor(0, 255, 20, 20);
+    // eyes.setPixelColor(0, 126, 6, 229);
+    // eyes.setPixelColor(0, stroboC[i].r, stroboC[i].g, stroboC[i].b);
+    eyes.show();
+    delay(50);
+    eyes.setBrightness(0);
+    eyes.show();
+  }
+}
+
+CRGBPalette16 firePal;
+
+void fireSetup()
+{
+  currentDelay = 40;
+  usePixies = 1;
+  // firePal = CRGBPalette16(CRGB::Black, CRGB::Red, CRGB::Yellow, CRGB::Grey);
+  // firePal = CRGBPalette16(CRGB::Black, CRGB::Red, CRGB::Yellow, CRGB::White);
+  // firePal = CRGBPalette16(CRGB::Black, CRGB::Red, CRGB::Yellow, CRGB::White);
+
+  // firePal = CRGBPalette16(CRGB::Black,
+  //                         CRGB::Black,
+  //                         CRGB::Black,
+  //                         CRGB::DarkBlue,
+  //                         CRGB::MidnightBlue,
+  //                         CRGB::Black,
+  //                         CRGB::MediumBlue,
+  //                         CRGB::Teal,
+  //                         CRGB::CadetBlue,
+  //                         CRGB::Blue,
+  //                         CRGB::DarkCyan,
+  //                         CRGB::CornflowerBlue,
+  //                         CRGB::Aquamarine,
+  //                         CRGB::SeaGreen,
+  //                         CRGB::Aqua,
+  //                         CRGB::LightSkyBlue);
+  // firePal = LavaColors_p;
+  firePal = HeatColors_p;
+  // firePal = ForestColors_p;
+  // firePal = OceanColors_p;
+}
+
+#define COOLING 4
+#define SPARKING 80
+
+void fire()
+{
+  static byte heat[NUM_LEDS];
+  random16_add_entropy(random());
+  // cool down
+  for (int x = 0; x < NUM_LEDS; x++)
+  {
+    heat[x] = qsub8(heat[x], random8(0, COOLING));
+  }
+  for (int x = 0; x < NUM_LEDS; x++)
+  {
+    if (x == 0)
+    {
+      heat[0] = (heat[0] + heat[1]) / 2;
+    }
+    if (x == NUM_LEDS - 1)
+    {
+      heat[NUM_LEDS - 1] = (heat[NUM_LEDS - 1] + heat[NUM_LEDS - 2]) / 2;
+    }
+    if (x > 0 && x < NUM_LEDS - 1)
+    {
+      heat[x] = (heat[x - 1] + heat[x] + heat[x + 1]) / 3;
+    }
+  }
+
+  // // drift up and difuse
+  // for (int x = 0; x < X; x++)
+  // {
+  //   for (int k = Y - 1; k >= 2; k--)
+  //   {
+  //     int kk = k;
+  //     int dir = 1;
+  //     if (x % 2 != 0)
+  //     {
+  //       kk = 29 - k;
+  //       dir = -1;
+  //     }
+  //     heat[(kk + x * Y)] = (heat[(kk + x * Y) - dir] + heat[(kk + x * Y) - (2 * dir)] + heat[(kk + x * Y) - (2 * dir)]) / 3;
+  //   }
+  // }
+
+  // ignite wings
+  for (int i = 0; i < 5; i++)
+  {
+    if (random8() < SPARKING)
+    {
+      int x = random16(NUM_LEDS_PER_STRIP * 4);
+      heat[x] = qadd8(heat[x], random8(50, 150));
+    }
+  }
+  if (random8() < SPARKING)
+  {
+    int x = random16(NUM_LEDS_PER_STRIP * 4);
+    heat[x] = qadd8(heat[x], random8(80, 190));
+  }
+
+  // corpus
+  for (int i = 0; i < 6; i++)
+  {
+    if (random8() < SPARKING)
+    {
+      int x = random16(NUM_LEDS_PER_STRIP * 4, NUM_LEDS_PER_STRIP * 5);
+      heat[x] = qadd8(heat[x], random8(50, 150));
+    }
+  }
+
+  // tail
+  byte colorindex = scale8(heat[NUM_LEDS_PER_STRIP], 240);
+  CRGB c = ColorFromPalette(firePal, colorindex);
+  fiberTail.setPixelColor(0, c.r, c.g, c.b);
+  fiberTail.setBrightness(255);
+  fiberTail.show();
+
+  // eyes
+  // if (buttonState[EYE_STATE] == 1)
+  // {
+  byte ci = scale8(heat[NUM_LEDS_PER_STRIP + 40], 240);
+  CRGB cc = ColorFromPalette(firePal, ci);
+
+  // eyes.setBrightness(currentBrightness / 3);
+  eyes.setBrightness(100);
+  eyes.setPixelColor(0, cc.r, cc.g, cc.b);
+  // }
+  // else
+  // {
+  //   eyes.setBrightness(0);
+  // }
+
+  eyes.show();
+
+  // map to pixels
+  for (int j = 0; j < NUM_LEDS; j++)
+  {
+    byte colorindex = scale8(heat[j], 240);
+    CRGB color = ColorFromPalette(firePal, colorindex);
+    leds[j] = color;
+  }
+}
+
+void fireWithPotentiometerSetup()
+{
+  fireSetup();
+  usePotentiometer = 0;
+}
+
+void fireWithPotentiometer()
+{
+
+  int sparking = potentiometer / 4;
+  int bodyCooling = 5;
+  int wingCooling = 7;
+
+  static byte heat[NUM_LEDS];
+  random16_add_entropy(random());
+  // cool down
+  for (int x = 0; x < NUM_LEDS; x++)
+  {
+    heat[x] = qsub8(heat[x], random8(0, wingCooling));
+  }
+  for (int x = NUM_LEDS * 4; x < NUM_LEDS_PER_STRIP * 5; x++)
+  {
+    heat[x] = qsub8(heat[x], random8(0, bodyCooling));
+  }
+  for (int x = 0; x < NUM_LEDS; x++)
+  {
+    if (x == 0)
+    {
+      heat[0] = (heat[0] + heat[1]) / 2;
+    }
+    if (x == NUM_LEDS - 1)
+    {
+      heat[NUM_LEDS - 1] = (heat[NUM_LEDS - 1] + heat[NUM_LEDS - 2]) / 2;
+    }
+    if (x > 0 && x < NUM_LEDS - 1)
+    {
+      heat[x] = (heat[x - 1] + heat[x] + heat[x + 1]) / 3;
+    }
+    // if (x > 1 && x < NUM_LEDS - 2)
+    // {
+    //   heat[x] = (heat[x - 2] + heat[x - 1] + heat[x] + heat[x + 1] + heat[x + 2]) / 5;
+    // }
+  }
+
+  // // drift up and difuse
+  // for (int x = 0; x < X; x++)
+  // {
+  //   for (int k = Y - 1; k >= 2; k--)
+  //   {
+  //     int kk = k;
+  //     int dir = 1;
+  //     if (x % 2 != 0)
+  //     {
+  //       kk = 29 - k;
+  //       dir = -1;
+  //     }
+  //     heat[(kk + x * Y)] = (heat[(kk + x * Y) - dir] + heat[(kk + x * Y) - (2 * dir)] + heat[(kk + x * Y) - (2 * dir)]) / 3;
+  //   }
+  // }
+
+  // ignite wings
+  for (int i = 0; i < 7; i++)
+  {
+    if (random8() < sparking)
+    {
+      int x = random16(NUM_LEDS_PER_STRIP * 4);
+      heat[x] = qadd8(heat[x], random8(50, 190));
+    }
+  }
+
+  // corpus
+  for (int i = 0; i < 6; i++)
+  {
+    if (random8() < sparking)
+    {
+      int x = random16(NUM_LEDS_PER_STRIP * 4, NUM_LEDS_PER_STRIP * 5);
+      heat[x] = qadd8(heat[x], random8(50, 150));
+    }
+  }
+
+  // tail
+  byte colorindex = scale8(heat[NUM_LEDS_PER_STRIP], 240);
+  CRGB c = ColorFromPalette(firePal, colorindex);
+  fiberTail.setPixelColor(0, c.r, c.g, c.b);
+  fiberTail.setBrightness(255);
+  fiberTail.show();
+
+  // eyes
+  // if (buttonState[EYE_STATE] == 1)
+  // {
+  byte ci = scale8(heat[NUM_LEDS_PER_STRIP + 40], 240);
+  CRGB cc = ColorFromPalette(firePal, ci);
+
+  // eyes.setBrightness(currentBrightness / 3);
+  eyes.setBrightness(100);
+  eyes.setPixelColor(0, cc.r, cc.g, cc.b);
+  // }
+  // else
+  // {
+  //   eyes.setBrightness(0);
+  // }
+
+  eyes.show();
+
+  // map to pixels
+  for (int j = 0; j < NUM_LEDS; j++)
+  {
+    byte colorindex = scale8(heat[j], 240);
+    CRGB color = ColorFromPalette(firePal, colorindex);
+    leds[j] = color;
+  }
+}
+
+uint8_t frequency = 20;
+uint8_t flashes = 8;
+unsigned int dimmer = 1;
+
+uint16_t ledstart;
+uint8_t ledlen;
+
+void flash2Setup()
+{
+  currentDelay = 0;
+}
+void flash2()
+{
+
+  ledstart = random16(NUM_LEDS);
+  ledlen = random16(NUM_LEDS - ledstart);
+
+  for (int flashCounter = 0; flashCounter < random8(3, flashes); flashCounter++)
+  {
+    if (flashCounter == 0)
+      dimmer = 5;
+    else
+      dimmer = random8(1, 3);
+
+    fill_solid(leds + ledstart, ledlen, CHSV(255, 0, 255 / dimmer));
+    FastLED.show();
+    delay(random8(4, 10));
+    fill_solid(leds + ledstart, ledlen, CHSV(255, 0, 0));
+    FastLED.show();
+
+    if (flashCounter == 0)
+      delay(150);
+
+    delay(50 + random8(100));
+  }
+
+  delay(random8(frequency) * 100);
 }
 
 // the loop routine runs over and over again forever:
