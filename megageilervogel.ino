@@ -1,22 +1,24 @@
+// animation ideas todo
+// - heartbeat
+// - thunder mode
+// #define FASTLED_ALLOW_INTERRUPTS 0
 #include <FastLED.h>
+#include <ADC.h>
+#include <Audio.h>
 #include <SoftwareSerial.h>
 #include <Adafruit_Pixie.h>
 #include "Adafruit_Trellis.h"
-
-// sensor
 #include <Adafruit_Sensor.h>
 #include <Adafruit_LSM9DS0.h>
+#include <math.h>
 
-#include <i2c_t3.h>
-
-// #include <Audio.h>
-
-// #include <SPI.h>
-// #include <SerialFlash.h>
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
-#define POTENTIOMETER_PIN 16
+#define POTENTIOMETER_PIN 37
 #define MIC_PIN 17
+
+// analog - digital
+ADC *adc = new ADC();
 
 // motion sensor
 Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0(&Wire2, 1000);
@@ -24,6 +26,7 @@ Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0(&Wire2, 1000);
 // button board
 Adafruit_Trellis matrix0 = Adafruit_Trellis();
 Adafruit_TrellisSet pad = Adafruit_TrellisSet(&matrix0);
+#define PAD_CONNECTED false
 
 // 3W pixels
 SoftwareSerial pixieSerial(-1, 5);
@@ -36,10 +39,34 @@ Adafruit_Pixie fiberTail = Adafruit_Pixie(1, &pixieSerial2);
 #define NUM_LEDS 600
 #define NUM_LEDS_PER_STRIP 120
 #define NUM_STRIPS 5
-#define MAX_BRIGHTNESS 255
+#define MAX_BRIGHTNESS 55
 #define TEENSY_LED 13
 
 CRGB leds[NUM_LEDS];
+
+class Segment
+{
+  int start, end;
+
+public:
+  Segment(int s, int e)
+  {
+    start = s;
+    end = e;
+  }
+
+  uint16_t lerp(uint8_t x)
+  {
+    return lerp16by8(start, end, x);
+  }
+  void lerpTo(uint8_t x, CRGB c)
+  {
+    for (int i = start; i < lerp(x); i++)
+    {
+      leds[i] = c;
+    }
+  }
+};
 
 typedef void (*Mode[2])(void);
 
@@ -48,37 +75,58 @@ uint8_t ledsPerStrip[] = {68, 68, 100, 95};
 
 // buttons
 #define EYE_STATE 15
-// #define FIBER_HEAD_STATE 13
-// #define FIBER_TAIL_STATE 14
-// #define FIBER_WING_STATE 15
 
 // active or not active
 uint8_t buttonState[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-uint8_t usePotentiometer = 1;
+// global state
 int8_t currentMode = 0;
 int8_t previousMode = 0;
 uint8_t currentBrightness = MAX_BRIGHTNESS;
-uint16_t currentDelay = 0;
-uint8_t button = 0;
-uint8_t shouldClear = 1;
-uint8_t usePixies = 0;
+uint16_t currentDelay = 0; // delay between frames
+uint8_t shouldClear = 1;   // clear all leds between frames
+uint8_t shouldShow = 1;
+uint8_t usePixies = 1;        // pixies on
+uint8_t usePotentiometer = 1; // use potentiometer to get brightness value for next frame
+
+// Debug stuff to count LEDS properly
+static int globalP = 0;
 
 void none() {}
-void testMode() {}
 
 Mode modes[] = {
-    {none, none},
-    {fiberPulse, fiberPulseSetup},
+    {fibertest, none},
+    {wingTest, none},
+    {newAudio, newAudioSetup},       // y
+    {heartbeat, heartbeatSetup},     // y
+    {betterAudio, betterAudioSetup}, // y
+
+    {lerpTest, lerpTestSetup}, // y
+    // {ftest, none},
+
+    // {wingTest, none},
+
+    // {simpleAudio, simpleAudioSetup}, // y
+
+    // {wingTest, none},
+    // {linearTest, none},
+    {pixieTest, pixieTestSetup},
+    {ftest, none},
+    // {fiberPulse, fiberPulseSetup},
+    // {none, none},
+    {pride, prideSetup}, // y
+    // {sparks, sparksSetup},
+    {flashTest, flashTestSetup},
+    {rainbowSparks, rainbowSparksSetup},
+    {randomBluePixels, randomBluePixelsSetup},
+    // {none, none},
     {fiberBlink, fiberBlinkSetup},
-    {simpleAudio, simpleAudioSetup}, // y
+    // {simpleAudio, simpleAudioSetump}, // y
 
     {colorWheelPulsing, colorWheelPulsingSetup},
-    // {ftest, none},
     // {fireNoise, fireNoiseSetup},
     // {betterAudio, betterAudioSetup},
     {pride, prideSetup},         // y
-    {lerpTest, lerpTestSetup},   // y
     {accelLerp, accelLerpSetup}, // y
 
     // {juggle, juggleSetup},
@@ -96,32 +144,48 @@ Mode modes[] = {
     {iceSparks, iceSparksSetup},
 };
 
-// AudioInputAnalog adc1(17);
-// AudioAnalyzePeak peak1;
-// AudioConnection patchCord1(adc1, peak1);
-
-// Debug stuff to count LEDS properly
-static int globalP = 0;
+#include "libs/util.cpp"
 
 // the setup routine runs once when you press reset:
 void setup()
 {
+  while (!Serial && (millis() <= 2000))
+    ; // Wait for Serial interface
   Serial.begin(115200);
 
-  // init button pads and flash them once
-  pad.begin(0x70);
-  for (uint8_t i = 0; i < 16; i++)
+  Serial.println("boot bird");
+  Serial.println("LED init");
+  // init all other leds
+  FastLED.addLeds<WS2811_PORTD, NUM_STRIPS>(leds, NUM_LEDS_PER_STRIP);
+  FastLED.setMaxPowerInVoltsAndMilliamps(5, 5000);
+  FastLED.setBrightness(MAX_BRIGHTNESS);
+  clear();
+  FastLED.clear();
+  FastLED.show();
+
+  if (PAD_CONNECTED)
   {
-    pad.setLED(i);
-    pad.writeDisplay();
-    delay(25);
+    Serial.println("pad init");
+    // init button pads and flash them once
+    pad.begin(0x70);
+    for (uint8_t i = 0; i < 16; i++)
+    {
+      pad.setLED(i);
+      pad.writeDisplay();
+      delay(25);
+    }
+    for (uint8_t i = 0; i < 16; i++)
+    {
+      pad.clrLED(i);
+      pad.writeDisplay();
+      delay(25);
+    }
   }
-  for (uint8_t i = 0; i < 16; i++)
+  else
   {
-    pad.clrLED(i);
-    pad.writeDisplay();
-    delay(25);
+    Serial.println("pad disabled!");
   }
+  Serial.println("motion init");
   // init motion sensor
   if (lsm.begin())
   {
@@ -134,23 +198,28 @@ void setup()
     Serial.println("LSM SENSOR ERROR!");
   }
 
-  // AudioMemory(4);
-
   // initialize the digital pin as an output.
   pinMode(TEENSY_LED, OUTPUT);
+
+  Serial.println("3W LED init");
 
   // init 3w leds serial connection
   pixieSerial.begin(115200);
   pixieSerial2.begin(115200);
   pixieSerial3.begin(115200);
 
-  // init all other leds
-  FastLED.addLeds<WS2811_PORTD, NUM_STRIPS>(leds, NUM_LEDS_PER_STRIP);
-  // //.setCorrection(TypicalLEDStrip);
-  FastLED.setBrightness(MAX_BRIGHTNESS);
-  FastLED.clear();
-  FastLED.show();
-  // FastLED.setMaxPowerInVoltsAndMilliamps(5, 2000);
+  adc->setAveraging(16, ADC_1);                                    // set number of averages
+  adc->setResolution(16, ADC_1);                                   // set bits of resolution
+  adc->setConversionSpeed(ADC_CONVERSION_SPEED::LOW_SPEED, ADC_1); // change the conversion speed
+  adc->setSamplingSpeed(ADC_SAMPLING_SPEED::LOW_SPEED, ADC_1);     // change the sampling speed
+  adc->setReference(ADC_REFERENCE::REF_3V3, ADC_1);
+  adc->adc1->recalibrate();
+
+  AudioMemory(8);
+
+  // adc->setAveraging(16, ADC_1);
+  // adc->setSamplingSpeed(ADC_SAMPLING_SPEED::MED_SPEED, ADC_1);
+  // adc->setResolution(10, ADC_1); // adc->setResolution(10, ADC_1):
 
   delay(10); // if we fucked it up - great idea by fastled :D
 
@@ -158,37 +227,58 @@ void setup()
   modes[0][1]();
 }
 
-void nextMode(int8_t dir)
+void PrintE()
 {
-  int8_t newMode;
-  newMode = currentMode + dir;
+  float e, n;
+  int b, bands, bins, count = 0, d;
 
-  if (newMode < 0)
-  {
-    newMode = ARRAY_SIZE(modes) - 1;
+  bands = 30; // Frequency bands; (Adjust to desired value)
+  bins = 512; // FFT bins; (Adjust to desired value)
+
+  e = FindE(bands, bins); // Find calculated E value
+  if (e)
+  {                                  // If a value was returned continue
+    Serial.printf("E = %4.4f\n", e); // Print calculated E value
+    for (b = 0; b < bands; b++)
+    { // Test and print the bins from the calculated E
+      n = pow(e, b);
+      d = int(n + 0.5);
+
+      Serial.printf("%4d ", count); // Print low bin
+      count += d - 1;
+      Serial.printf("%4d\n", count); // Print high bin
+      ++count;
+    }
   }
-  else if (newMode >= ARRAY_SIZE(modes))
-  {
-    newMode = 0;
-  }
-  Serial.print("NEXT MODE");
-  Serial.println(newMode);
-  setMode(newMode);
+  else
+    Serial.println("Error\n"); // Error, something happened
 }
 
-void setMode(uint8_t mode)
+float FindE(int bands, int bins)
 {
+  float increment = 0.1, eTest, n;
+  int b, count, d;
 
-  previousMode = currentMode;
-  currentMode = mode;
-  if (currentMode < 0)
-    currentMode = ARRAY_SIZE(modes) - 1;
-  // setBrightness(MAX_BRIGHTNESS);
-  usePotentiometer = 1;
-  currentDelay = 0;
-  shouldClear = 1;
-  usePixies = 0;
-  modes[currentMode][1]();
+  for (eTest = 1; eTest < bins; eTest += increment)
+  { // Find E through brute force calculations
+    count = 0;
+    for (b = 0; b < bands; b++)
+    { // Calculate full log values
+      n = pow(eTest, b);
+      d = int(n + 0.5);
+      count += d;
+    }
+    if (count > bins)
+    {                     // We calculated over our last bin
+      eTest -= increment; // Revert back to previous calculation increment
+      increment /= 10.0;  // Get a finer detailed calculation & increment a decimal point lower
+    }
+    else if (count == bins)    // We found the correct E
+      return eTest;            // Return calculated E
+    if (increment < 0.0000001) // Ran out of calculations. Return previous E. Last bin will be lower than (bins-1)
+      return (eTest - increment);
+  }
+  return 0; // Return error 0
 }
 
 void checkSerial()
@@ -201,6 +291,7 @@ void checkSerial()
     globalP++;
     Serial.print("CURRENT POS");
     Serial.println(globalP);
+    nextMode(1);
   }
 }
 
@@ -208,8 +299,10 @@ static uint16_t potentiometer = 0;
 
 void checkPotentiometer()
 {
-  potentiometer = analogRead(POTENTIOMETER_PIN);
-  uint8_t brightness = potentiometer / 4;
+  potentiometer = adc->analogRead(POTENTIOMETER_PIN, ADC_1);
+
+  uint8_t brightness = map(potentiometer, 0, 65535, 0, 255); // potentiometer / 4;
+  // Serial.println(brightness);
   currentBrightness = brightness;
   if (usePotentiometer == 1)
   {
@@ -336,94 +429,6 @@ void checkButtons()
   pad.writeDisplay();
 }
 
-// audio code
-#define DC_OFFSET 0 // DC offset in mic signal
-#define NOISE 100
-#define SAMPLES 60 // samples for the mic buffer
-
-#define MIN_DIST_AUDIO_LEVELS 10
-
-int vol[SAMPLES];
-int lvl = 10; // audio level dampend
-int minLvlAvg = 0;
-int maxLvlAvg = 512;
-byte volumeSampleIndex = 0;
-
-void audioUpdate()
-{
-  uint8_t i;
-  uint16_t minLvl, maxLvl;
-  int n, height;
-  n = analogRead(MIC_PIN);            // Raw reading from mic
-  n = abs(n - 512 - DC_OFFSET);       // Center on zero
-  n = (n <= NOISE) ? 0 : (n - NOISE); // Remove noise/hum
-  lvl = ((lvl * 7) + n) >> 3;         // "Dampened" reading (else looks twitchy)
-
-  vol[volumeSampleIndex] = n; // Save sample for dynamic leveling
-  if (++volumeSampleIndex >= SAMPLES)
-    volumeSampleIndex = 0; // Advance/rollover sample counter
-
-  // Get volume range of prior frames
-  minLvl = maxLvl = vol[0];
-  for (i = 1; i < SAMPLES; i++)
-  {
-    if (vol[i] < minLvl)
-      minLvl = vol[i];
-    else if (vol[i] > maxLvl)
-      maxLvl = vol[i];
-  }
-  // minLvl and maxLvl indicate the volume range over prior frames, used
-  // for vertically scaling the output graph (so it looks interesting
-  // regardless of volume level).  If they're too close together though
-  // (e.g. at very low volume levels) the graph becomes super coarse
-  // and 'jumpy'...so keep some minimum distance between them (this
-  // also lets the graph go to zero when no sound is playing):
-  if ((maxLvl - minLvl) < MIN_DIST_AUDIO_LEVELS)
-    maxLvl = minLvl + MIN_DIST_AUDIO_LEVELS;
-  minLvlAvg = (minLvlAvg * 63 + minLvl) >> 6; // Dampen min/max levels
-  maxLvlAvg = (maxLvlAvg * 63 + maxLvl) >> 6; // (fake rolling average)
-}
-
-#define TOP 60
-
-void simpleAudioSetup()
-{
-  currentDelay = 10;
-  shouldClear = false;
-}
-
-void simpleAudio()
-{
-  fadeToBlackBy(leds, NUM_LEDS, 70);
-  // clear();
-  audioUpdate();
-  int height;
-  static uint8_t hue = 0;
-  hue++;
-  height = TOP * (lvl - minLvlAvg) / (long)(maxLvlAvg - minLvlAvg);
-
-  if (height < 0L)
-    height = 0; // Clip output
-  else if (height > TOP)
-    height = TOP;
-
-  int f2 = height * 5;
-
-  leftWingLinear(f2, CHSV(hue, 255, 255));
-  rightWingLinear(f2, CHSV(hue, 255, 255));
-  bodyFront(f2, CHSV(hue, 255, 255));
-  bodyBack(f2, CHSV(hue, 255, 255));
-
-  // for (int i = 0; i < NUM_STRIPS; i++)
-  // {
-  //   for (int j = 0; j < height; j++)
-  //   {
-  //     // leds[(i * NUM_LEDS_PER_STRIP) + j] = CRGB(0, 255, 0);
-  //     leds[(i * NUM_LEDS_PER_STRIP) + j] = CHSV(hue + j, 255, 255);
-  //   }
-  // }
-}
-
 void colorWheel()
 {
   static uint8_t hue = 0;
@@ -438,30 +443,38 @@ void colorWheel()
   }
 }
 
-void clear()
+void flashTestSetup()
 {
-  memset(leds, 0, sizeof(leds));
+  // currentDelay = 2;
+  currentDelay = 5;
+  shouldClear = false;
 }
 
-void testled()
+void flashTest()
 {
-  static uint8_t lvl = HIGH;
-  digitalWrite(TEENSY_LED, lvl);
-  if (lvl == HIGH)
-    lvl = LOW;
-  else
-    lvl = HIGH;
+  // clear();
+  fadeToBlackBy(leds, NUM_LEDS, 2);
+  EVERY_N_MILLISECONDS(1000)
+  {
+    for (int j = 0; j < 20; j++)
+    {
+      int x = random(0, NUM_LEDS);
+      leds[x] = CRGB::White;
+    }
+  }
 }
-
 void randomBluePixelsSetup()
 {
-  currentDelay = 2;
+  // currentDelay = 2;
+  currentDelay = 0;
+  shouldClear = false;
 }
 
 void randomBluePixels()
 {
-  clear();
-  for (int j = 0; j < 10; j++)
+  // clear();
+  fadeToBlackBy(leds, NUM_LEDS, 40);
+  for (int j = 0; j < 3; j++)
   {
     int x = random(0, NUM_LEDS);
     leds[x] = CRGB::Blue;
@@ -497,69 +510,193 @@ uint16_t stripoffset(uint8_t n)
 //     back 0-35
 //     front 36-67
 
-#define LW_FRONT_START 1
-#define LW_FRONT_END 45
-#define LW_S1A_START 46
-#define LW_S1A_END 71
-#define LW_S1B_START 72
-#define LW_S1B_END 94
-#define LW_S2A_START 0 + NUM_LEDS_PER_STRIP
-#define LW_S2A_END 31 + NUM_LEDS_PER_STRIP
-#define LW_S2B_START 32 + NUM_LEDS_PER_STRIP
-#define LW_S2B_END 62 + NUM_LEDS_PER_STRIP
+#define LW_FRONT_START 0
+#define LW_FRONT_PEAK 28
+#define LW_FRONT_END 46
 
-#define RW_FRONT_START (0 + (NUM_LEDS_PER_STRIP * 2))
-#define RW_FRONT_END (44 + (NUM_LEDS_PER_STRIP * 2))
-#define RW_S1A_START (45 + (NUM_LEDS_PER_STRIP * 2))
-#define RW_S1A_END (71 + (NUM_LEDS_PER_STRIP * 2))
-#define RW_S1B_START (72 + (NUM_LEDS_PER_STRIP * 2))
-#define RW_S1B_END (99 + (NUM_LEDS_PER_STRIP * 2))
-#define RW_S2A_START (0 + (NUM_LEDS_PER_STRIP * 3))
-#define RW_S2A_END (33 + (NUM_LEDS_PER_STRIP * 3))
-#define RW_S2B_START (34 + (NUM_LEDS_PER_STRIP * 3))
-#define RW_S2B_END (67 + (NUM_LEDS_PER_STRIP * 3))
+#define LW_MIDDLE_START 0 + NUM_LEDS_PER_STRIP
+#define LW_MIDDLE_PEAK 33 + NUM_LEDS_PER_STRIP
+#define LW_MIDDLE_END 68 + NUM_LEDS_PER_STRIP
 
-#define BODY_FRONT_START (36 + NUM_LEDS_PER_STRIP * 4)
-#define BODY_FRONT_END (67 + NUM_LEDS_PER_STRIP * 4)
-#define BODY_BACK_START (0 + NUM_LEDS_PER_STRIP * 4)
-#define BODY_BACK_END (35 + NUM_LEDS_PER_STRIP * 4)
+#define LW_BACK_START 46
+#define LW_BACK_PEAK 73
+#define LW_BACK_END 101
+
+#define RW_FRONT_START 0 + (NUM_LEDS_PER_STRIP * 2)
+#define RW_FRONT_PEAK 28 + (NUM_LEDS_PER_STRIP * 2)
+#define RW_FRONT_END 45 + (NUM_LEDS_PER_STRIP * 2)
+
+#define RW_MIDDLE_START 0 + (NUM_LEDS_PER_STRIP * 3)
+#define RW_MIDDLE_PEAK 31 + (NUM_LEDS_PER_STRIP * 3)
+#define RW_MIDDLE_END 68 + (NUM_LEDS_PER_STRIP * 3)
+
+#define RW_BACK_START 45 + (NUM_LEDS_PER_STRIP * 2)
+#define RW_BACK_PEAK 70 + (NUM_LEDS_PER_STRIP * 2)
+#define RW_BACK_END 96 + (NUM_LEDS_PER_STRIP * 2)
+
+#define BODY_START 0 + (NUM_LEDS_PER_STRIP * 4)
+#define BODY_END 50 + (NUM_LEDS_PER_STRIP * 4)
+#define BODY_AND_HEAD_END 70 + (NUM_LEDS_PER_STRIP * 4)
+
+#define BODY_FRONT_START 36 + (NUM_LEDS_PER_STRIP * 4)
+#define BODY_FRONT_END 50 + (NUM_LEDS_PER_STRIP * 4)
+
+#define BODY_BACK_START 0 + (NUM_LEDS_PER_STRIP * 4)
+#define BODY_BACK_END 36 + (NUM_LEDS_PER_STRIP * 4)
+
+#define HEAD_START 50 + (NUM_LEDS_PER_STRIP * 4)
+#define HEAD_END 70 + (NUM_LEDS_PER_STRIP * 4)
+
+#define HEAD_LEFT_START 50 + (NUM_LEDS_PER_STRIP * 4)
+#define HEAD_LEFT_END 60 + (NUM_LEDS_PER_STRIP * 4)
+
+#define HEAD_RIGHT_START 60 + (NUM_LEDS_PER_STRIP * 4)
+#define HEAD_RIGHT_END 70 + (NUM_LEDS_PER_STRIP * 4)
+
+Segment lwFront = Segment(LW_FRONT_START, LW_FRONT_END);
+Segment lwFrontInner = Segment(LW_FRONT_START, LW_FRONT_PEAK);
+Segment lwFrontOuter = Segment(LW_FRONT_PEAK, LW_FRONT_END);
+
+Segment lwMiddleTop = Segment(LW_MIDDLE_START, LW_MIDDLE_PEAK);
+Segment lwMiddleBottom = Segment(LW_MIDDLE_PEAK, LW_MIDDLE_END);
+
+Segment lwBackTop = Segment(LW_BACK_START, LW_BACK_PEAK);
+Segment lwBackBottom = Segment(LW_BACK_PEAK, LW_BACK_END);
+
+Segment rwFront = Segment(RW_FRONT_START, RW_FRONT_END);
+Segment rwFrontInner = Segment(RW_FRONT_START, RW_FRONT_PEAK);
+Segment rwFrontOuter = Segment(RW_FRONT_PEAK, RW_FRONT_END);
+Segment rwMiddleTop = Segment(RW_MIDDLE_PEAK, RW_MIDDLE_END);
+Segment rwMiddleBottom = Segment(RW_MIDDLE_START, RW_MIDDLE_PEAK);
+Segment rwBackTop = Segment(RW_BACK_START, RW_BACK_PEAK);
+Segment rwBackBottom = Segment(RW_BACK_PEAK, RW_BACK_END);
+
+Segment bodyFront = Segment(BODY_FRONT_START, BODY_FRONT_END);
+Segment bodyBack = Segment(BODY_BACK_START, BODY_BACK_END);
+
+Segment headLeft = Segment(HEAD_LEFT_START, HEAD_LEFT_END);
+Segment headRight = Segment(HEAD_RIGHT_START, HEAD_RIGHT_END);
+
+void fill(uint16_t from, uint16_t to, CRGB c)
+{
+  fill_solid(leds + from, to - from, c);
+}
+
+void wingTest()
+{
+
+  lwFrontInner.lerpTo(255, CRGB::Green);
+  lwFrontOuter.lerpTo(255, CRGB::Red);
+
+  // lwMiddleTop.lerpTo(255, CRGB::Blue);
+
+  // lwBackTop.lerpTo(255, CRGB::Yellow);
+
+  // rwMiddleTop.lerpTo(255, CRGB::Blue);
+  // rwMiddleBottom.lerpTo(255, CRGB::Green);
+
+  // rwBackTop.lerpTo(255, CRGB::Yellow);
+  // rwBackBottom.lerpTo(255, CRGB::Green);
+
+  // fill(LW_FRONT_START, LW_FRONT_PEAK, CRGB::Green);
+  // fill(LW_FRONT_PEAK, LW_FRONT_END, CRGB::Red);
+
+  // fill(LW_MIDDLE_START, LW_MIDDLE_PEAK, CRGB::Yellow);
+  // fill(LW_MIDDLE_PEAK, LW_MIDDLE_END, CRGB::Red);
+
+  // fill(LW_BACK_START, LW_BACK_PEAK, CRGB::Red);
+  // fill(LW_BACK_PEAK, LW_BACK_END + 20, CRGB::Yellow);
+
+  // fill(RW_FRONT_START, RW_FRONT_PEAK, CRGB::Green);
+  // fill(RW_FRONT_PEAK, RW_FRONT_END, CRGB::Red);
+
+  // fill(RW_MIDDLE_START, RW_MIDDLE_PEAK, CRGB::Green);
+  // fill(RW_MIDDLE_PEAK, RW_MIDDLE_END, CRGB::Red);
+
+  // fill(RW_BACK_START, RW_BACK_PEAK, CRGB::Red);
+  // fill(RW_BACK_PEAK, RW_BACK_END + 20, CRGB::Green);
+
+  // fill(BODY_FRONT_START, BODY_FRONT_END, CRGB::Red);
+  // fill(BODY_BACK_START, BODY_BACK_END, CRGB::Green);
+
+  // fill(HEAD_LEFT_START, HEAD_LEFT_END, CRGB::Green);
+  // fill(HEAD_RIGHT_START, HEAD_RIGHT_END, CRGB::Blue);
+
+  // fill(BODY_START, BODY_END, CRGB::Green);
+  // fill(HEAD_START, HEAD_END, CRGB::Red);
+}
+
+// #define LW_S1A_START 46
+// #define LW_S1A_END 71
+// #define LW_S1B_START 72
+// #define LW_S1B_END 94
+// #define LW_S2A_START 0 + NUM_LEDS_PER_STRIP
+// #define LW_S2A_END 31 + NUM_LEDS_PER_STRIP
+// #define LW_S2B_START 32 + NUM_LEDS_PER_STRIP
+// #define LW_S2B_END 62 + NUM_LEDS_PER_STRIP
+
+// #define RW_FRONT_START (0 + (NUM_LEDS_PER_STRIP * 2))
+// #define RW_FRONT_END (44 + (NUM_LEDS_PER_STRIP * 2))
+// #define RW_S1A_START (45 + (NUM_LEDS_PER_STRIP * 2))
+// #define RW_S1A_END (71 + (NUM_LEDS_PER_STRIP * 2))
+// #define RW_S1B_START (72 + (NUM_LEDS_PER_STRIP * 2))
+// #define RW_S1B_END (99 + (NUM_LEDS_PER_STRIP * 2))
+// #define RW_S2A_START (0 + (NUM_LEDS_PER_STRIP * 3))
+// #define RW_S2A_END (33 + (NUM_LEDS_PER_STRIP * 3))
+// #define RW_S2B_START (34 + (NUM_LEDS_PER_STRIP * 3))
+// #define RW_S2B_END (67 + (NUM_LEDS_PER_STRIP * 3))
+
+// #define BODY_FRONT_START (36 + NUM_LEDS_PER_STRIP * 4)
+// #define BODY_FRONT_END (67 + NUM_LEDS_PER_STRIP * 4)
+// #define BODY_BACK_START (0 + NUM_LEDS_PER_STRIP * 4)
+// #define BODY_BACK_END (35 + NUM_LEDS_PER_STRIP * 4)
 
 #define LW_LERP_OFFSET 100.0
 #define RW_LERP_OFFSET 100.0
 // 5 leds per wing at the same position (0-255)
+
 void leftWingLinear(uint8_t x, CRGB c)
 {
-  leds[lerp8by8(LW_FRONT_START, LW_FRONT_END - 15, x)] += c;
+  leds[lerp8by8(LW_FRONT_START, LW_FRONT_PEAK, x)] += c;
+  leds[lerp8by8(LW_MIDDLE_START, LW_MIDDLE_PEAK, x)] += c;
+  leds[lerp8by8(LW_MIDDLE_END, LW_MIDDLE_PEAK, x)] += c;
+
   if (float(x) > LW_LERP_OFFSET)
   {
     uint8_t xx = uint8_t((float(x) - LW_LERP_OFFSET) * (255.0 / (255.0 - LW_LERP_OFFSET)));
-    leds[lerp8by8(LW_S1A_START, LW_S1A_END, xx)] += c;
-    leds[lerp8by8(LW_S1B_END, LW_S1B_START, xx)] += c; // starts later ... skip the first 100
+    leds[lerp8by8(LW_BACK_START, LW_BACK_PEAK, xx)] += c;
+    leds[lerp8by8(LW_BACK_END, LW_BACK_PEAK, xx)] += c;
   }
-  leds[lerp8by8(LW_S2A_START, LW_S2A_END, x)] += c;
-  leds[lerp8by8(LW_S2B_END, LW_S2B_START, x)] += c;
 }
+
 void rightWingLinear(uint8_t x, CRGB c)
 {
-  leds[lerp16by8(RW_FRONT_START, RW_FRONT_END - 15, x)] += c;
+  leds[lerp16by8(RW_FRONT_START, RW_FRONT_PEAK, x)] += c;
+  leds[lerp16by8(RW_MIDDLE_START, RW_MIDDLE_PEAK, x)] += c;
+  leds[lerp16by8(RW_MIDDLE_END, RW_MIDDLE_PEAK, x)] += c;
+
   if (float(x) > RW_LERP_OFFSET)
   {
     uint8_t xx = uint8_t((float(x) - RW_LERP_OFFSET) * (255.0 / (255.0 - RW_LERP_OFFSET)));
-    leds[lerp16by8(RW_S1A_START, RW_S1A_END, xx)] += c;
-    leds[lerp16by8(RW_S1B_END, RW_S1B_START, xx)] += c; // starts later ... skip the first 100
+    leds[lerp16by8(RW_BACK_START, RW_BACK_PEAK, xx)] += c;
+    leds[lerp16by8(RW_BACK_END, RW_BACK_PEAK, xx)] += c;
   }
-  leds[lerp16by8(RW_S2A_START, RW_S2A_END, x)] += c;
-  leds[lerp16by8(RW_S2B_END, RW_S2B_START, x)] += c;
 }
 
-void bodyFront(uint8_t x, CRGB c)
+void linearTest()
 {
-  leds[lerp16by8(BODY_FRONT_START, BODY_FRONT_END, x)] += c;
+  leftWingLinear(globalP * 4, CRGB::Red);
+  rightWingLinear(globalP * 4, CRGB::Green);
 }
-void bodyBack(uint8_t x, CRGB c)
-{
-  leds[lerp16by8(BODY_BACK_END, BODY_BACK_START, x)] += c;
-}
+
+// void bodyFront(uint8_t x, CRGB c)
+// {
+//   leds[lerp16by8(BODY_FRONT_START, BODY_FRONT_END, x)] += c;
+// }
+// void bodyBack(uint8_t x, CRGB c)
+// {
+//   leds[lerp16by8(BODY_BACK_END, BODY_BACK_START, x)] += c;
+// }
 
 void accelLerpSetup()
 {
@@ -585,8 +722,8 @@ void accelLerp()
   {
     leftWingLinear(i, CHSV(hue2 + 100, 255, 255));
     rightWingLinear(i, CHSV(hue2 + 100, 255, 255));
-    bodyFront(i, CHSV(hue2 + 100, 255, 255));
-    bodyBack(i, CHSV(hue2 + 100, 255, 255));
+    // bodyFront(i, CHSV(hue2 + 100, 255, 255));
+    // bodyBack(i, CHSV(hue2 + 100, 255, 255));
   }
 
   if (mv > 10)
@@ -612,14 +749,16 @@ void lerpTest()
   // {
 
   // uint8_t f = ease8InOutCubic(p + i);
+
   uint8_t f = beatsin8(100, 0, 255);
   leftWingLinear(f, CHSV(hue1, 255, 255));
   rightWingLinear(f, CHSV(hue1, 255, 255));
+
   uint8_t f2 = beatsin8(50, 20, 220);
   leftWingLinear(f2, CHSV(hue2 + 100, 255, 255));
   rightWingLinear(f2, CHSV(hue2 + 100, 255, 255));
-  bodyFront(f2, CHSV(hue2 + 100, 255, 255));
-  bodyBack(f2, CHSV(hue2 + 100, 255, 255));
+  // bodyFront(f2, CHSV(hue2 + 100, 255, 255));
+  // bodyBack(f2, CHSV(hue2 + 100, 255, 255));
 
   // }
 }
@@ -627,7 +766,7 @@ void lerpTest()
 void ftest()
 {
   clear();
-  CRGB stripColor[5] = {CRGB::Green, CRGB::Red, CRGB::Blue, CRGB::Yellow, CRGB::Orange};
+  CRGB stripColor[5] = {CRGB::Green, CRGB::Red, CRGB::Blue, CRGB::Yellow, CRGB::White};
   for (int i = 0; i < 5; i++)
   {
     leds[globalP + stripoffset(i)] = stripColor[i];
@@ -678,14 +817,17 @@ uint16_t xy(uint8_t x, uint8_t y)
     return (x % 12) * 30 + (29 - (y % 30));
 }
 
+// looking from front
+
 uint16_t fiberright(int8_t n)
 {
-  return NUM_LEDS_PER_STRIP * 2 + 100 + n;
+  // maybe +2
+  return NUM_LEDS_PER_STRIP * 2 + 96 + n;
 }
 
 uint16_t fiberleft(uint8_t n)
 {
-  return 95 + n;
+  return 101 + n;
 }
 
 void fibertest()
@@ -700,10 +842,16 @@ void fibertest()
   leds[fiberright(1)] = CRGB::Blue;
   leds[fiberright(2)] = CRGB::Red;
   leds[fiberright(3)] = CRGB::Yellow;
-  leds[fiberright(4)] = CRGB::Yellow;
-  leds[fiberright(5)] = CRGB::Yellow;
-  leds[fiberright(6)] = CRGB::Yellow;
-  leds[fiberright(7)] = CRGB::Yellow;
+
+  leds[fiberleft(0)] = CRGB::Green;
+  leds[fiberleft(1)] = CRGB::Blue;
+  leds[fiberleft(2)] = CRGB::Red;
+  leds[fiberleft(3)] = CRGB::Yellow;
+
+  // leds[fiberright(4)] = CRGB::Yellow;
+  // leds[fiberright(5)] = CRGB::Yellow;
+  // leds[fiberright(6)] = CRGB::Yellow;
+  // leds[fiberright(7)] = CRGB::Yellow;
 
   // leds[fiberleft(0)] = CRGB::Green;
   // leds[fiberleft(1)] = CRGB::Blue;
@@ -762,6 +910,58 @@ void showFps()
   fps = 0;
 }
 
+void prideSetup()
+{
+  currentDelay = 50;
+}
+
+void pride()
+{
+  static uint16_t sPseudotime = 0;
+  static uint16_t sLastMillis = 0;
+  static uint16_t sHue16 = 0;
+
+  static uint8_t start = 0;
+  start++;
+  // EVERY_N_MILLISECONDS(60) { start++; }
+  start = start % 2;
+
+  uint8_t sat8 = beatsin88(87, 220, 250);
+  uint8_t brightdepth = beatsin88(341, 96, 224);
+  uint16_t brightnessthetainc16 = beatsin88(203, (25 * 256), (40 * 256));
+  uint8_t msmultiplier = beatsin88(147, 23, 60);
+
+  uint16_t hue16 = sHue16; //gHue * 256;
+  uint16_t hueinc16 = beatsin88(113, 1, 3000);
+
+  uint16_t ms = millis();
+  uint16_t deltams = ms - sLastMillis;
+  sLastMillis = ms;
+  sPseudotime += deltams * msmultiplier;
+  sHue16 += deltams * beatsin88(400, 5, 9);
+  uint16_t brightnesstheta16 = sPseudotime;
+
+  for (uint16_t i = start; i < NUM_LEDS; i += 2)
+  {
+    hue16 += hueinc16;
+    uint8_t hue8 = hue16 / 256;
+
+    brightnesstheta16 += brightnessthetainc16;
+    uint16_t b16 = sin16(brightnesstheta16) + 32768;
+
+    uint16_t bri16 = (uint32_t)((uint32_t)b16 * (uint32_t)b16) / 65536;
+    uint8_t bri8 = (uint32_t)(((uint32_t)bri16) * brightdepth) / 65536;
+    bri8 += (255 - brightdepth);
+
+    CRGB newcolor = CHSV(hue8, sat8, qadd8(bri8, 100));
+
+    uint16_t pixelnumber = i;
+    pixelnumber = (NUM_LEDS - 1) - pixelnumber;
+
+    nblend(leds[pixelnumber], newcolor, 64);
+  }
+}
+
 void colorWheelPulsingSetup()
 {
   currentDelay = 40;
@@ -806,6 +1006,7 @@ void basicPowerLedMode()
   static uint8_t eyeFlicker = 0;
 
   int16_t b = 0;
+  // CRGB c(0, 255 0);
   CRGB c(255, 0, 0);
 
   static int8_t d = 1;
@@ -819,6 +1020,7 @@ void basicPowerLedMode()
 
   // EVERY_N_MILLISECONDS(20) { hue++; }
   // c.setHSV(hue, 255, 255);
+
   if (buttonState[EYE_STATE] == 1)
   {
     b = currentBrightness + v;
@@ -893,8 +1095,34 @@ void fiberBlink()
   fiberTail.show();
 }
 
+void pixieTestSetup()
+{
+  usePixies = 1;
+  currentDelay = 10;
+  shouldClear = true;
+}
+void pixieTest()
+{
+
+  eyes.setPixelColor(0, 255, 0, 0);
+  fiberTail.setPixelColor(0, 0, 255, 0);
+  fiberHead.setPixelColor(0, 0, 0, 255);
+  eyes.setBrightness(50);
+  fiberTail.setBrightness(0);
+  fiberHead.setBrightness(0);
+  // EVERY_N_MILLISECONDS(500)
+  // {
+
+  // all three must be shown in this order - otherwise it will flicker
+  fiberTail.show();
+  fiberHead.show();
+  eyes.show();
+  // }
+}
+
 void fiberPulseSetup()
 {
+  usePixies = 1;
   FastLED.setBrightness(255);
   currentDelay = 10;
   usePotentiometer = 0;
@@ -1438,53 +1666,6 @@ void fireNoise()
   // void 	fill_noise8 (CRGB *leds, int num_leds, uint8_t octaves, uint16_t x, int scale, uint8_t hue_octaves, uint16_t hue_x, int hue_scale, uint16_t time)
 }
 
-void prideSetup()
-{
-  currentDelay = 20;
-}
-
-void pride()
-{
-  static uint16_t sPseudotime = 0;
-  static uint16_t sLastMillis = 0;
-  static uint16_t sHue16 = 0;
-
-  uint8_t sat8 = beatsin88(87, 220, 250);
-  uint8_t brightdepth = beatsin88(341, 96, 224);
-  uint16_t brightnessthetainc16 = beatsin88(203, (25 * 256), (40 * 256));
-  uint8_t msmultiplier = beatsin88(147, 23, 60);
-
-  uint16_t hue16 = sHue16; //gHue * 256;
-  uint16_t hueinc16 = beatsin88(113, 1, 3000);
-
-  uint16_t ms = millis();
-  uint16_t deltams = ms - sLastMillis;
-  sLastMillis = ms;
-  sPseudotime += deltams * msmultiplier;
-  sHue16 += deltams * beatsin88(400, 5, 9);
-  uint16_t brightnesstheta16 = sPseudotime;
-
-  for (uint16_t i = 0; i < NUM_LEDS; i++)
-  {
-    hue16 += hueinc16;
-    uint8_t hue8 = hue16 / 256;
-
-    brightnesstheta16 += brightnessthetainc16;
-    uint16_t b16 = sin16(brightnesstheta16) + 32768;
-
-    uint16_t bri16 = (uint32_t)((uint32_t)b16 * (uint32_t)b16) / 65536;
-    uint8_t bri8 = (uint32_t)(((uint32_t)bri16) * brightdepth) / 65536;
-    bri8 += (255 - brightdepth);
-
-    CRGB newcolor = CHSV(hue8, sat8, qadd8(bri8, 100));
-
-    uint16_t pixelnumber = i;
-    pixelnumber = (NUM_LEDS - 1) - pixelnumber;
-
-    nblend(leds[pixelnumber], newcolor, 64);
-  }
-}
-
 // void betterAudioSetup()
 // {
 //   currentDelay = 10;
@@ -1500,10 +1681,10 @@ void pride()
 //   hue++;
 //   if (audioFps > 25)
 //   {
-//     if (peak1.available())
+//     if (audioPeak.available())
 //     {
 //       audioFps = 0;
-//       int monoPeak = peak1.read();
+//       int monoPeak = audioPeak.read();
 //       Serial.println(monoPeak);
 //       for (int cnt = 0; cnt < monoPeak; cnt++)
 //       {
@@ -1513,48 +1694,658 @@ void pride()
 //   }
 // }
 
+// ---------------------------------
+// Functional test
+#include "effects/tests.cpp"
+
+AudioInputAnalog adc1(MIC_PIN);
+AudioAnalyzePeak audioPeak;
+AudioConnection patchCord1(adc1, audioPeak);
+
+// AudioAnalyzeRMS rms;
+// AudioConnection patchCord3(adc1, rms);
+// AudioAnalyzeFFT256 fft;
+// AudioConnection patchCord2(adc1, fft);
+
+void betterAudioSetup()
+{
+  currentDelay = 2; // 500Hz
+  shouldClear = true;
+}
+
+#define AUDIO_SAMPLES 60 // samples for the mic buffer
+#define MIN_DIST_AUDIO_LEVELS 0.1
+#define MIN_AUDIO_LEVEL 0.01
+
+float audioSamples[AUDIO_SAMPLES];
+float minAudioAvg = 0;
+float maxAudioAvg = 5.0;
+byte audioSampleIdx = 0;
+
+void audioUpdate(float sample)
+{
+  float min, max;
+
+  if (sample < MIN_AUDIO_LEVEL)
+    sample = 0;
+
+  audioSamples[audioSampleIdx] = sample;
+  if (++audioSampleIdx >= AUDIO_SAMPLES)
+    audioSampleIdx = 0;
+
+  min = max = audioSamples[0];
+  for (uint8_t i = 1; i < AUDIO_SAMPLES; i++)
+  {
+    if (audioSamples[i] < min)
+      min = audioSamples[i];
+    else if (audioSamples[i] > max)
+      max = audioSamples[i];
+  }
+  if ((max - min) < MIN_DIST_AUDIO_LEVELS)
+    max = min + MIN_DIST_AUDIO_LEVELS;
+  minAudioAvg = (minAudioAvg * (AUDIO_SAMPLES - 1) + min) / AUDIO_SAMPLES;
+  maxAudioAvg = (maxAudioAvg * (AUDIO_SAMPLES - 1) + max) / AUDIO_SAMPLES;
+}
+
+// void leftWingLinearUpto(uint8_t x, CRGB c)
+// {
+//   leds[lerp8by8(LW_FRONT_START, LW_FRONT_PEAK, x)] += c;
+//   leds[lerp8by8(LW_MIDDLE_START, LW_MIDDLE_PEAK, x)] += c;
+//   leds[lerp8by8(LW_MIDDLE_END, LW_MIDDLE_PEAK, x)] += c;
+
+//   if (float(x) > LW_LERP_OFFSET)
+//   {
+//     uint8_t xx = uint8_t((float(x) - LW_LERP_OFFSET) * (255.0 / (255.0 - LW_LERP_OFFSET)));
+//     leds[lerp8by8(LW_BACK_START, LW_BACK_PEAK, xx)] += c;
+//     leds[lerp8by8(LW_BACK_END, LW_BACK_PEAK, xx)] += c;
+//   }
+// }
+
+void betterAudio()
+{
+  // fadeToBlackBy(leds, NUM_LEDS, 5);
+
+  fill(HEAD_LEFT_START, HEAD_LEFT_END, CRGB::Green);
+  fill(HEAD_RIGHT_START, HEAD_RIGHT_END, CRGB::Blue);
+
+  static uint8_t hue = 0;
+  static float lastPeak = 0;
+  hue++;
+
+  hue %= 128;
+
+  if (audioPeak.available())
+  {
+    float peak = audioPeak.read();
+    audioUpdate(peak);
+
+    if (peak < minAudioAvg)
+    {
+      peak = minAudioAvg;
+    }
+
+    int p = 128.0 * (peak - minAudioAvg) / (maxAudioAvg - minAudioAvg);
+
+    lwFrontInner.lerpTo(p, CHSV(HUE_BLUE, 230, p));
+    // lwMiddleTop.lerpTo(p, CHSV(HUE_BLUE + p, 230, p));
+    // leftWingLinear(p, CHSV(HUE_BLUE + p, 230, p));
+    // leftWingLinear(p, CHSV(HUE_BLUE + p, 230, p));
+    rightWingLinear(p, CHSV(HUE_BLUE + p, 230, p));
+    // bodyFront(p, CHSV(HUE_BLUE + p, 230, p));
+    // bodyBack(p, CHSV(HUE_BLUE + p, 230, p));
+
+    // if (p > 210)
+    // {
+    //   fill(LW_BACK_PEAK, LW_BACK_END + 20, CRGB::Yellow);
+    // }
+
+    // if (p > 190)
+    // {
+    //   eyes.setPixelColor(0, 155, 0, 0);
+    //   fiberTail.setPixelColor(0, 0, 255, 0);
+    //   fiberHead.setPixelColor(0, 0, 0, 255);
+    //   eyes.setBrightness(50);
+    //   fiberTail.setBrightness(p);
+    //   fiberHead.setBrightness(p);
+
+    //   // all three must be shown in this order - otherwise it will flicker
+    //   fiberTail.show();
+    //   fiberHead.show();
+    //   eyes.show();
+    // }
+
+    // if (peak > lastPeak)
+    // {
+    //   lastPeak = peak;
+    // }
+    // // leftWingLinear(peak * 255.0, CHSV(255, 255, 255));
+    // // rightWingLinear(peak * 255.0, CHSV(255, 255, 255));
+
+    // lastPeak *= 0.99;
+  }
+}
+
+void audioUpdate2(float sample)
+{
+  float min, max;
+
+  if (sample < MIN_AUDIO_LEVEL)
+    sample = 0;
+
+  audioSamples[audioSampleIdx] = sample;
+  if (++audioSampleIdx >= AUDIO_SAMPLES)
+    audioSampleIdx = 0;
+
+  min = max = audioSamples[0];
+  for (uint8_t i = 1; i < AUDIO_SAMPLES; i++)
+  {
+    if (audioSamples[i] < min)
+      min = audioSamples[i];
+    else if (audioSamples[i] > max)
+      max = audioSamples[i];
+  }
+  if ((max - min) < MIN_DIST_AUDIO_LEVELS)
+    max = min + MIN_DIST_AUDIO_LEVELS;
+  minAudioAvg = (minAudioAvg * (AUDIO_SAMPLES - 1) + min) / AUDIO_SAMPLES;
+  maxAudioAvg = (maxAudioAvg * (AUDIO_SAMPLES - 1) + max) / AUDIO_SAMPLES;
+}
+
+elapsedMicros audioSamplingTimer;
+elapsedMillis audioShowTimer;
+boolean beatDetected = false;
+
+AudioAnalyzeRMS rms;
+// AudioConnection patchCord2(adc1, rms);
+
+AudioAnalyzeFFT1024 fft;
+AudioConnection patchCord3(adc1, fft);
+
+#define AUDIO_SAMPLES 100
+int sampleCount = 0;
+
+#define BEAT_BANDS 30
+#define LONGTERM_SAMPLES 60
+#define BEAT_COUNTER_SAMPLES 400
+#define BEAT_AVG_SAMPLES 100
+
+#define CUTOFF 3
+#define DELTA_SAMPLES 300
+
+#define MAX_TIME 200
+
+float deltaSamples[BEAT_BANDS][DELTA_SAMPLES];
+float deltas[BEAT_BANDS];
+float longtermSamples[BEAT_BANDS][LONGTERM_SAMPLES];
+float avgSamples[LONGTERM_SAMPLES];
+float delta[BEAT_BANDS];
+float totalShort[BEAT_BANDS];
+float longtermAvg[BEAT_BANDS];
+float band[BEAT_BANDS];
+
+int count[BEAT_BANDS];
+int beatSpread[MAX_TIME];
+float c[BEAT_BANDS];
+int beatCounter[BEAT_COUNTER_SAMPLES];
+int beatAvg[BEAT_AVG_SAMPLES];
+
+int bandMap[BEAT_BANDS][2] = {
+    {0, 0},
+    {1, 1},
+    {2, 3},
+    {4, 5},
+    {6, 8},
+    {9, 11},
+    {12, 15},
+    {16, 21},
+    {22, 28},
+    {29, 37},
+    {38, 49},
+    {50, 64},
+    {65, 84},
+    {85, 110},  // 3400 - 4400 (13)
+    {111, 143}, // 4440 - 5720
+    {144, 185},
+    {186, 239},
+    {240, 308},
+    {309, 397},
+    {398, 511}};
+
+float totalBeat;
+int longPos = 0;
+int deltaPos = 0;
+int beatCounterPos = 0;
+int nextBeatCounter = 0;
+int beat = 0;
+int beatPos = 0;
+float threshold = 0;
+float predictiveInfluenceConstant = .1;
+float predictiveInfluence;
+int cyclePerBeatIntensity;
+float standardDeviation;
+int cyclesPerBeat;
+
+void newAudioSetup()
+{
+  currentDelay = 0; // 500Hz
+  // shouldClear = true;
+  shouldClear = false;
+  shouldShow = true;
+
+  for (int i = 0; i < BEAT_BANDS; i += 1)
+  {
+    count[i] = 0;
+    longtermAvg[i] = 0;
+    delta[i] = 0;
+    c[i] = 1.5;
+  }
+}
+
+int amax(int *array, int size)
+{
+  int maxIndex = 0;
+  int max = array[maxIndex];
+  for (int i = 1; i < size; i++)
+  {
+    if (max < array[i])
+    {
+      max = array[i];
+      maxIndex = i;
+    }
+  }
+  return maxIndex;
+}
+int amode(int *a, int size)
+{
+  int modeMap[size];
+  int maxEl = a[0];
+  int maxCount = 1;
+
+  for (int i = 0; i < size; i++)
+  {
+    int el = a[i];
+    if (modeMap[el] == 0)
+    {
+      modeMap[el] = 1;
+    }
+    else
+    {
+      modeMap[el]++;
+    }
+
+    if (modeMap[el] > maxCount)
+    {
+      maxEl = el;
+      maxCount = modeMap[el];
+    }
+  }
+  return maxEl;
+}
+
+void newAudio()
+{
+
+  fadeToBlackBy(leds, NUM_LEDS, 5);
+
+  if (fft.available())
+  {
+    longPos++;
+    if (longPos >= LONGTERM_SAMPLES)
+      longPos = 0;
+    deltaPos++;
+    if (deltaPos >= DELTA_SAMPLES)
+      deltaPos = 0;
+    beatPos++;
+    if (beatPos >= DELTA_SAMPLES)
+      beatPos = 0;
+
+    float currentAvg = 0;
+    for (int i = 0; i < BEAT_BANDS; i++)
+    {
+
+      Serial.print(float(i), i > 9 ? 1 : 2);
+      Serial.print(" ");
+    }
+    Serial.println("");
+
+    for (int i = 0; i < BEAT_BANDS; i++)
+    {
+      band[i] = fft.read(bandMap[i][0], bandMap[i][1]);
+      currentAvg += band[i];
+
+      longtermAvg[i] = 0;
+      for (int j = 0; j < LONGTERM_SAMPLES; j++)
+      {
+        longtermAvg[i] += longtermSamples[i][j];
+      }
+
+      longtermSamples[i][longPos] = band[i];
+      if (band[i] >= 0.01)
+      {
+        Serial.print(band[i]);
+        Serial.print(" ");
+      }
+      else
+      {
+        Serial.print("  -  ");
+      }
+    }
+    currentAvg = currentAvg / float(BEAT_BANDS);
+    Serial.println("");
+
+    for (int i = 0; i < BEAT_BANDS; i++)
+    {
+      delta[i] = 0.0;
+      longtermAvg[i] = longtermAvg[i] / float(LONGTERM_SAMPLES);
+
+      // store a delta between the current value and the longterm avg per band
+      deltaSamples[i][deltaPos] = pow(abs(longtermAvg[i] - band[i]), 2);
+
+      // calculate the per band delta avg for all samples we have
+      for (int j = 0; j < DELTA_SAMPLES; j += 1)
+      {
+        delta[i] += deltaSamples[i][j];
+        // Serial.print(delta[i], 5);
+        // Serial.print(" ");
+      }
+      // Serial.println();
+      delta[i] = delta[i] / float(DELTA_SAMPLES);
+
+      c[i] = 1.3 + constrain(map(delta[i], 0, 3000, 0, .4), 0, .4) +       //delta is usually bellow 2000
+             map(constrain(pow(longtermAvg[i], .5), 0, 6), 0, 20, .3, 0) + //possibly comment this out, adds weight to the lower end
+             map(constrain(count[i], 0, 15), 0, 15, 1, 0) -
+             map(constrain(count[i], 30, 200), 30, 200, 0, .75);
+
+      if (cyclePerBeatIntensity / standardDeviation > 3.5)
+      {
+        predictiveInfluence = predictiveInfluenceConstant * (1 - cos((float(nextBeatCounter) * TWO_PI) / float(cyclesPerBeat)));
+        predictiveInfluence *= map(constrain(cyclePerBeatIntensity / standardDeviation, 3.5, 20), 3.5, 15, 1, 6);
+        if (cyclesPerBeat > 10)
+          c[i] = c[i] + predictiveInfluence;
+      }
+      c[i] = 1.5;
+    }
+
+    // avg over some frequency + calc global avg LONGTERM_SAMPLES
+    // one bin is 43 HZ
+    avgSamples[longPos] = fft.read(0, 425) / 425.0;
+    float globalAvg = 0;
+    for (int j = 0; j < LONGTERM_SAMPLES; j += 1)
+      globalAvg += avgSamples[j];
+    globalAvg = globalAvg / float(LONGTERM_SAMPLES);
+
+    // Serial.print("global: ");
+    // Serial.println(globalAvg, 8);
+
+    beat = 0;
+    for (int i = 0; i < BEAT_BANDS; i += 1)
+    {
+      if (band[i] > longtermAvg[i] * c[i] & count[i] > 7)
+      {
+        if (count[i] > 12 & count[i] < 200)
+        {
+          beatCounter[beatCounterPos % BEAT_COUNTER_SAMPLES] = count[i];
+          beatCounterPos += 1;
+        }
+        count[i] = 0;
+      }
+    }
+
+    // if there was a beat we reset the counter to zero
+    for (int i = 0; i < BEAT_BANDS; i += 1)
+      if (count[i] < 2)
+        beat += 1;
+
+    beatAvg[beatPos] = beat;
+    for (int i = 0; i < BEAT_AVG_SAMPLES; i += 1)
+      totalBeat += beatAvg[i];
+    totalBeat = totalBeat / float(BEAT_AVG_SAMPLES);
+
+    c[0] = 3.25 + map(constrain(nextBeatCounter, 0, 5), 0, 5, 5, 0);
+    if (cyclesPerBeat > 10)
+      c[0] = c[0] + .75 * (1 - cos((float(nextBeatCounter) * TWO_PI) / float(cyclesPerBeat)));
+
+    c[0] = 1.5;
+
+    threshold = constrain(c[0] * totalBeat + map(constrain(globalAvg, 0, 2), 0, 2, 4, 0), 5, 1000);
+    // Serial.print(" c0: ");
+    // Serial.print(c[0], 8);
+    // Serial.print(" globalAvg: ");
+    // Serial.print(globalAvg, 8);
+    // Serial.print(" beat: ");
+    // Serial.print(beat);
+    // Serial.print(" threshold: ");
+    // Serial.print(threshold, 8);
+    // Serial.print(" nextBeat: ");
+    // Serial.println(nextBeatCounter);
+
+    if (beat > threshold & nextBeatCounter > 5)
+    {
+      // Serial.print(" c0: ");
+      // Serial.print(c[0], 8);
+      // Serial.print(" globalAvg: ");
+      // Serial.print(globalAvg, 8);
+      // Serial.print(" beats: ");
+      // Serial.print(beat);
+      // Serial.print(" threshold: ");
+      // Serial.print(threshold, 8);
+      // Serial.print(" nextBeat: ");
+
+      // Serial.print(" total beat avg=");
+      // Serial.print(totalBeat, 8);
+
+      // Serial.print(" currentAvg: ");
+      // Serial.print(currentAvg, 8);
+
+      float d = currentAvg - globalAvg;
+      // Serial.print(" d=");
+      // Serial.print(d, 6);
+
+      int p = constrain(d * 25500.0, 0, 255);
+      // Serial.print(" P=");
+      // Serial.print(p);
+
+      lwFrontInner.lerpTo(150, CHSV(HUE_RED, 230, 255));
+      rwFrontInner.lerpTo(150, CHSV(HUE_RED, 230, 255));
+      for (int i = BODY_FRONT_START + 1; i < BODY_FRONT_END - 9; i++)
+      {
+        leds[i].setHSV(0, 255, 255);
+      }
+      // Serial.println(" => BEAT!");
+      nextBeatCounter = 0;
+    }
+
+    for (int i = 0; i < MAX_TIME; i++)
+      beatSpread[i] = 0;
+    for (int i = 0; i < BEAT_COUNTER_SAMPLES; i++)
+    {
+      beatSpread[beatCounter[i]] += 1;
+    }
+
+    cyclesPerBeat = amode(beatCounter, BEAT_COUNTER_SAMPLES);
+    if (cyclesPerBeat < 20)
+      cyclesPerBeat *= 2;
+
+    cyclePerBeatIntensity = amax(beatSpread, MAX_TIME);
+
+    standardDeviation = 0;
+    for (int i = 0; i < MAX_TIME; i++)
+      standardDeviation += pow(BEAT_COUNTER_SAMPLES / MAX_TIME - beatSpread[i], 2);
+    standardDeviation = pow(standardDeviation / MAX_TIME, .5);
+
+    for (int i = 0; i < BEAT_BANDS; i += 1)
+      count[i] += 1;
+    deltaPos += 1;
+    nextBeatCounter += 1;
+    beatPos += 1;
+
+    // Serial.print(audioSamplingTimer);
+    // audioSamplingTimer = 0;
+    // Serial.print("|FFT: ");
+    // for (int i = 0; i < 20; i++)
+    // {
+    //   float n = fft.read(i);
+    //   if (n >= 0.01)
+    //   {
+    //     Serial.print(n);
+    //     Serial.print(" ");
+    //   }
+    //   else
+    //   {
+    //     Serial.print("  -  ");
+    //   }
+    // }
+    // Serial.println();
+  }
+
+  // EVERY_N_MILLISECONDS(1000)
+  // {
+  //   Serial.print("fft=");
+  //   Serial.print(fft.processorUsage());
+  //   Serial.print(",");
+  //   Serial.print(fft.processorUsageMax());
+  //   Serial.print(" Memory: ");
+  //   Serial.print(AudioMemoryUsage());
+  //   Serial.print(",");
+  //   Serial.print(AudioMemoryUsageMax());
+  //   Serial.println("");
+  // }
+
+  // // a sample is ready roughly every 3ms - lets test that assumption
+  // if (rms.available())
+  // {
+  //   float peak = rms.read();
+  //   Serial.println("peak " + String(peak) + " t=" + String(audioSamplingTimer));
+  //   audioSamplingTimer = 0;
+  //   sampleCount++;
+
+  //   if(sampleCount >= AUDIO_SAMPLES) {
+
+  //   }
+  // }
+
+  // a sample is ready roughly every 3ms - lets test that assumption
+  // if (audioSamplingTimer > 22)
+  // {
+  //   if (audioPeak.available())
+  //   {
+  //     audioSamplingTimer = 0;
+  //     float peak = audioPeak.read();
+
+  //   }
+  // }
+  // if (audioShowTimer > 10)
+  // {
+  //   audioShowTimer = 0;
+
+  //   lwFrontInner.lerpTo(p, CHSV(HUE_BLUE, 230, p));
+  // }
+  // fadeToBlackBy(leds, NUM_LEDS, 5);
+
+  // fill(HEAD_LEFT_START, HEAD_LEFT_END, CRGB::Green);
+  // fill(HEAD_RIGHT_START, HEAD_RIGHT_END, CRGB::Blue);
+
+  // if (audioPeak.available())
+  // {
+  //   float peak = audioPeak.read();
+  //   audioUpdate(peak);
+
+  //   if (peak < minAudioAvg)
+  //   {
+  //     peak = minAudioAvg;
+  //   }
+
+  //   int p = 128.0 * (peak - minAudioAvg) / (maxAudioAvg - minAudioAvg);
+
+  //   lwFrontInner.lerpTo(p, CHSV(HUE_BLUE, 230, p));
+  //   rightWingLinear(p, CHSV(HUE_BLUE + p, 230, p));
+  // }
+}
+
+void heartbeatSetup()
+{
+  currentDelay = 10;
+  shouldClear = false;
+  usePotentiometer = 0;
+  LEDS.setBrightness(255);
+  usePixies = true;
+  shouldShow = true;
+}
+
+elapsedMillis timeElapsed;
+
+void heartbeat()
+{
+  static int fadeSpeed = 5;
+  fadeToBlackBy(leds, NUM_LEDS, fadeSpeed);
+  static int b = 0;
+
+  // uint8_t b = beat8(60);
+  // if (b < 40)
+  // {
+  //   b = 40;
+  // }
+  // fill(BODY_FRONT_START, BODY_FRONT_END, CHSV(0, 230, 40));
+  if (timeElapsed > 1000)
+  {
+    timeElapsed = 0;
+    fadeSpeed = 15;
+    b = 1;
+    for (int i = BODY_FRONT_START + 1; i < BODY_FRONT_END - 9; i++)
+    {
+      leds[i].setHSV(0, 255, 255);
+    }
+  }
+  if (timeElapsed > 200 && b == 1)
+  {
+    // timeElapsed = 0;
+    fadeSpeed = 10;
+    b = 0;
+    for (int i = BODY_FRONT_START + 1; i < BODY_FRONT_END - 9; i++)
+    {
+      leds[i].setHSV(0, 255, 255);
+    }
+  }
+
+  // EVERY_N_MILLISECONDS(1500)
+  // {
+  //   fiberTail.setPixelColor(0, 255, 0, 0);
+  //   fiberTail.setBrightness(255);
+  //   fiberTail.show();
+
+  //   eyes.setPixelColor(0, 255, 0, 0);
+  //   eyes.setBrightness(50);
+  //   eyes.show();
+
+  //   fiberHead.setPixelColor(0, 240, 10, 10);
+  //   fiberHead.setBrightness(150);
+  //   fiberHead.show();
+  // }
+}
+
 // the loop routine runs over and over again forever:
 void loop()
 {
 
   if (shouldClear)
     clear();
+
   if (!usePixies)
-  {
     basicPowerLedMode();
-  }
+
   modes[currentMode][0]();
-  FastLED.show();
 
-  delay(currentDelay);
-
-  // CRGB c(0, 0, 0);
-  // static uint8_t hue = 0;
-  // static uint8_t t = 0;
-
-  // EVERY_N_MILLISECONDS(20) { hue++; }
-  // c.setHSV(hue, 255, 255);
-  // eyes.setPixelColor(0, c.r, c.g, c.b);
-  // fiberHead.setPixelColor(0, c.r, c.g, c.b);
-  // fiberTail.setPixelColor(0, c.r, c.g, c.b);
-  // eyes.show();
-  // fiberHead.show();
-  // fiberTail.show();
-
-  // runner();
+  if (shouldShow)
+    FastLED.show();
 
   EVERY_N_MILLISECONDS(100) { checkPotentiometer(); }
-  EVERY_N_MILLISECONDS(30) { checkButtons(); }
+  if (PAD_CONNECTED)
+  {
+    EVERY_N_MILLISECONDS(30) { checkButtons(); }
+  }
   EVERY_N_MILLISECONDS(500) { testled(); }
-  EVERY_N_MILLISECONDS(500) { checkSerial(); }
-  // EVERY_N_MILLISECONDS(250) { reportSensor(); }
-  // EVERY_N_MILLISECONDS(100) { simpleAudio(); }
-  // colorWheel();
-  // runner();
-  // leds[0] = CRGB(20, 20, 255);
-  // leds[1] = CRGB(20, 255, 20);
-  // leds[2] = CRGB(255, 20, 20);
+  EVERY_N_MILLISECONDS(100) { checkSerial(); }
 
-  // FastLED.show();
-  // FastLED.delay(1000);
+  // EVERY_N_MILLISECONDS(250) { reportSensor(); }
+  if (currentDelay > 0)
+    delay(currentDelay);
 }
