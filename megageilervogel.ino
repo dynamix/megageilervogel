@@ -95,6 +95,9 @@ static int globalP = 0;
 void none() {}
 
 Mode modes[] = {
+    {wingBeat, wingBeatSetup},
+    {slowBeat, slowBeatSetup},
+    {sameBeat, sameBeatSetup},
     {fibertest, none},
     {wingTest, none},
     {newAudio, newAudioSetup},       // y
@@ -535,6 +538,7 @@ uint16_t stripoffset(uint8_t n)
 #define RW_BACK_END 96 + (NUM_LEDS_PER_STRIP * 2)
 
 #define BODY_START 0 + (NUM_LEDS_PER_STRIP * 4)
+#define BODY_MIDDLE 25 + (NUM_LEDS_PER_STRIP * 4)
 #define BODY_END 50 + (NUM_LEDS_PER_STRIP * 4)
 #define BODY_AND_HEAD_END 70 + (NUM_LEDS_PER_STRIP * 4)
 
@@ -2321,6 +2325,233 @@ void heartbeat()
   //   fiberHead.show();
   // }
 }
+
+void wingBeatSetup()
+{
+  shouldClear = false;
+  FastLED.setBrightness(100);
+  eyes.setPixelColor(0, 255, 25, 50);
+  eyes.setBrightness(40);
+  fiberHead.setBrightness(255);
+  fiberHead.setPixelColor(0, 255, 25, 50);
+
+  fiberTail.setBrightness(255);
+  fiberTail.setPixelColor(0, 255, 25, 50);
+}
+
+void wingBeat()
+{
+  static uint8_t gHue = 0;
+  fadeToBlackBy(leds, NUM_LEDS, 3);
+
+  int speed = 60;
+
+  int wingColor = beatsin16(10, 0, 255);
+  int bodyColor = beatsin16(3, 0, 255);
+
+  int diff = 25; //BODY_MIDDLE - BODY_START;
+  int pos = beatsin16(speed, 0, diff);
+  leds[BODY_MIDDLE-pos] += CHSV(bodyColor, 255, 192);
+
+  pos = beatsin16(speed, BODY_MIDDLE, BODY_END);
+  leds[pos] += CHSV(bodyColor, 255, 192);
+
+
+  pos = beatsin16(speed, HEAD_LEFT_START, HEAD_LEFT_END);
+  leds[pos] += CHSV(bodyColor, 255, 192);
+
+  pos = beatsin16(speed, HEAD_RIGHT_START, HEAD_RIGHT_END);
+  leds[pos] += CHSV(bodyColor, 255, 192);
+
+  pos = beatsin16(speed, LW_FRONT_START, LW_FRONT_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, LW_MIDDLE_START, LW_MIDDLE_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, LW_BACK_START, LW_BACK_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, RW_FRONT_START, RW_FRONT_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  diff = 68; // RW_MIDDLE_START - RW_MIDDLE_END
+  pos = beatsin16(speed, 0, diff);
+  leds[RW_MIDDLE_END-pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, RW_BACK_START, RW_BACK_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+
+
+  leds[fiberleft(0)] += CHSV(wingColor, 255, 192);
+  leds[fiberleft(1)] += CHSV(wingColor, 255, 192);
+  leds[fiberleft(2)] += CHSV(wingColor, 255, 192);
+  leds[fiberleft(3)] += CHSV(wingColor, 255, 192);
+
+  leds[fiberright(0)] += CHSV(wingColor, 255, 192);
+  leds[fiberright(1)] += CHSV(wingColor, 255, 192);
+  leds[fiberright(2)] += CHSV(wingColor, 255, 192);
+  leds[fiberright(3)] += CHSV(wingColor, 255, 192);
+
+  // EVERY_N_MILLISECONDS(5) { gHue++; }
+  fiberTail.show();
+  fiberHead.show();
+  eyes.show();
+}
+
+void slowBeatSetup()
+{
+  shouldClear = false;
+  FastLED.setBrightness(100);
+  eyes.setPixelColor(0, 255, 25, 50);
+  eyes.setBrightness(40);
+  fiberHead.setBrightness(255);
+  fiberHead.setPixelColor(0, 255, 25, 50);
+
+  fiberTail.setBrightness(255);
+  fiberTail.setPixelColor(0, 255, 25, 50);
+}
+
+void slowBeat()
+{
+  static uint8_t gHue = 0;
+  static bool shouldFade = true;
+  if(shouldFade) {
+    fadeToBlackBy(leds, NUM_LEDS, 1);
+
+  }
+  shouldFade = !shouldFade;
+  int speed = 9;
+
+  int wingColor = beatsin16(3, 0, 255);
+  int bodyColor = beatsin16(2, 0, 255);
+
+  int diff = 25; //BODY_MIDDLE - BODY_START;
+  int pos = beatsin16(speed, 0, diff);
+  leds[BODY_MIDDLE-pos] += CHSV(bodyColor, 255, 192);
+
+  pos = beatsin16(speed, BODY_MIDDLE, BODY_END);
+  leds[pos] += CHSV(bodyColor, 255, 192);
+
+
+  pos = beatsin16(speed, HEAD_LEFT_START, HEAD_LEFT_END);
+  leds[pos] += CHSV(bodyColor, 255, 192);
+
+  pos = beatsin16(speed, HEAD_RIGHT_START, HEAD_RIGHT_END);
+  leds[pos] += CHSV(bodyColor, 255, 192);
+
+  pos = beatsin16(speed, LW_FRONT_START, LW_FRONT_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, LW_MIDDLE_START, LW_MIDDLE_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, LW_BACK_START, LW_BACK_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, RW_FRONT_START, RW_FRONT_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  diff = 68; // RW_MIDDLE_START - RW_MIDDLE_END
+  pos = beatsin16(speed, 0, diff);
+  leds[RW_MIDDLE_END-pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, RW_BACK_START, RW_BACK_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+
+
+  leds[fiberleft(0)] += CHSV(wingColor, 255, 192);
+  leds[fiberleft(1)] += CHSV(wingColor, 255, 192);
+  leds[fiberleft(2)] += CHSV(wingColor, 255, 192);
+  leds[fiberleft(3)] += CHSV(wingColor, 255, 192);
+
+  leds[fiberright(0)] += CHSV(wingColor, 255, 192);
+  leds[fiberright(1)] += CHSV(wingColor, 255, 192);
+  leds[fiberright(2)] += CHSV(wingColor, 255, 192);
+  leds[fiberright(3)] += CHSV(wingColor, 255, 192);
+
+  // EVERY_N_MILLISECONDS(5) { gHue++; }
+  fiberTail.show();
+  fiberHead.show();
+  eyes.show();
+}
+
+void sameBeatSetup()
+{
+  shouldClear = false;
+  FastLED.setBrightness(100);
+  eyes.setPixelColor(0, 255, 25, 50);
+  eyes.setBrightness(40);
+  fiberHead.setBrightness(255);
+  fiberHead.setPixelColor(0, 255, 25, 50);
+
+  fiberTail.setBrightness(255);
+  fiberTail.setPixelColor(0, 255, 25, 50);
+}
+
+void sameBeat()
+{
+  static uint8_t gHue = 0;
+  fadeToBlackBy(leds, NUM_LEDS, 1);
+
+  int speed = 9;
+
+  int wingColor = beatsin16(3, 0, 255);
+  int bodyColor = wingColor;//beatsin16(2, 0, 255);
+
+  int diff = 25; //BODY_MIDDLE - BODY_START;
+  int pos = beatsin16(speed, 0, diff);
+  leds[BODY_MIDDLE-pos] += CHSV(bodyColor, 255, 192);
+
+  pos = beatsin16(speed, BODY_MIDDLE, BODY_END);
+  leds[pos] += CHSV(bodyColor, 255, 192);
+
+
+  pos = beatsin16(speed, HEAD_LEFT_START, HEAD_LEFT_END);
+  leds[pos] += CHSV(bodyColor, 255, 192);
+
+  pos = beatsin16(speed, HEAD_RIGHT_START, HEAD_RIGHT_END);
+  leds[pos] += CHSV(bodyColor, 255, 192);
+
+  pos = beatsin16(speed, LW_FRONT_START, LW_FRONT_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, LW_MIDDLE_START, LW_MIDDLE_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, LW_BACK_START, LW_BACK_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, RW_FRONT_START, RW_FRONT_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+  diff = 68; // RW_MIDDLE_START - RW_MIDDLE_END
+  pos = beatsin16(speed, 0, diff);
+  leds[RW_MIDDLE_END-pos] += CHSV(wingColor, 255, 192);
+
+  pos = beatsin16(speed, RW_BACK_START, RW_BACK_END);
+  leds[pos] += CHSV(wingColor, 255, 192);
+
+
+
+  leds[fiberleft(0)] += CHSV(wingColor, 255, 192);
+  leds[fiberleft(1)] += CHSV(wingColor, 255, 192);
+  leds[fiberleft(2)] += CHSV(wingColor, 255, 192);
+  leds[fiberleft(3)] += CHSV(wingColor, 255, 192);
+
+  leds[fiberright(0)] += CHSV(wingColor, 255, 192);
+  leds[fiberright(1)] += CHSV(wingColor, 255, 192);
+  leds[fiberright(2)] += CHSV(wingColor, 255, 192);
+  leds[fiberright(3)] += CHSV(wingColor, 255, 192);
+
+  // EVERY_N_MILLISECONDS(5) { gHue++; }
+  fiberTail.show();
+  fiberHead.show();
+  eyes.show();
+}
+
 
 // the loop routine runs over and over again forever:
 void loop()
