@@ -2416,8 +2416,12 @@ void slowBeatSetup()
 void slowBeat()
 {
   static uint8_t gHue = 0;
-  fadeToBlackBy(leds, NUM_LEDS, 1);
+  static bool shouldFade = true;
+  if(shouldFade) {
+    fadeToBlackBy(leds, NUM_LEDS, 1);
 
+  }
+  shouldFade = !shouldFade;
   int speed = 9;
 
   int wingColor = beatsin16(3, 0, 255);
